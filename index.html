@@ -36,18 +36,25 @@
             display: flex;
             width: 100%;
             height: 100%;
-            overflow-x: scroll;
+            overflow-x: auto;
             overflow-y: hidden;
             scroll-snap-type: x mandatory;
             -webkit-overflow-scrolling: touch;
             scroll-behavior: smooth;
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE and Edge */
+        }
+        .carousel-container::-webkit-scrollbar {
+            display: none; /* Chrome, Safari, Opera */
         }
         .carousel-item {
-            min-width: 100%;
+            min-width: 100vw;
+            width: 100vw;
             height: 100%;
             scroll-snap-align: start;
             scroll-snap-stop: always;
             position: relative;
+            flex-shrink: 0;
         }
         .carousel-dots {
             position: absolute;
@@ -404,13 +411,14 @@
             const deltaY = touchEndY - touchStartY;
             const feed = document.getElementById('feed');
             const currentScreen = document.querySelector('.screen.active') || document.querySelector('.screen');
+            const carousel = currentScreen?.querySelector('.carousel-container');
             
-            // Horizontal swipe (left/right) - for carousel
-            if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minSwipeDistance) {
-                if (deltaX < 0) {
-                    // Swipe left - next carousel item
-                    const carousel = currentScreen?.querySelector('.carousel-container');
-                    if (carousel) {
+            // If we're on a screen with a carousel, prioritize horizontal swipes
+            if (carousel) {
+                // Horizontal swipe (left/right) - for carousel
+                if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minSwipeDistance) {
+                    if (deltaX < 0) {
+                        // Swipe left - next carousel item
                         const items = carousel.querySelectorAll('.carousel-item');
                         const currentIndex = Math.round(carousel.scrollLeft / window.innerWidth);
                         if (currentIndex < items.length - 1) {
@@ -420,11 +428,8 @@
                             });
                             updateCarouselDots(carousel, currentIndex + 1);
                         }
-                    }
-                } else {
-                    // Swipe right - previous carousel item
-                    const carousel = currentScreen?.querySelector('.carousel-container');
-                    if (carousel) {
+                    } else {
+                        // Swipe right - previous carousel item
                         const currentIndex = Math.round(carousel.scrollLeft / window.innerWidth);
                         if (currentIndex > 0) {
                             carousel.scrollTo({
@@ -434,7 +439,13 @@
                             updateCarouselDots(carousel, currentIndex - 1);
                         }
                     }
+                    return; // Don't process vertical swipe if we handled horizontal
                 }
+            }
+            
+            // Horizontal swipe (left/right) - for carousel (fallback for non-carousel screens)
+            if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minSwipeDistance) {
+                // Handle horizontal swipe on non-carousel screens if needed
             }
             // Vertical swipe
             else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > minSwipeDistance) {
@@ -506,17 +517,37 @@
             setupEventListeners();
             updateSuggestions();
             
-            // Add swipe listeners
+            // Add swipe listeners to feed and carousels
             const feed = document.getElementById('feed');
-            feed.addEventListener('touchstart', (e) => {
-                touchStartX = e.touches[0].clientX;
-                touchStartY = e.touches[0].clientY;
+            
+            function attachSwipeListeners(element) {
+                element.addEventListener('touchstart', (e) => {
+                    touchStartX = e.touches[0].clientX;
+                    touchStartY = e.touches[0].clientY;
+                }, { passive: true });
+                element.addEventListener('touchend', (e) => {
+                    touchEndX = e.changedTouches[0].clientX;
+                    touchEndY = e.changedTouches[0].clientY;
+                    handleSwipe();
+                }, { passive: true });
+            }
+            
+            attachSwipeListeners(feed);
+            
+            // Also attach to carousel containers when they're created
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    mutation.addedNodes.forEach((node) => {
+                        if (node.nodeType === 1) { // Element node
+                            const carousel = node.querySelector?.('.carousel-container');
+                            if (carousel) {
+                                attachSwipeListeners(carousel);
+                            }
+                        }
+                    });
+                });
             });
-            feed.addEventListener('touchend', (e) => {
-                touchEndX = e.changedTouches[0].clientX;
-                touchEndY = e.changedTouches[0].clientY;
-                handleSwipe();
-            });
+            observer.observe(feed, { childList: true, subtree: true });
             
             // Start countdown updates
             startCountdownTicker();
@@ -913,8 +944,8 @@
                         <p class="card-text h6 text-white text-opacity-75 mb-1">On Now</p>
                         <h1 class="card-title h4 text-white">DOKU, The Binary World by Lu Yang</h1>
                         <p class="card-text"><small class="text-white">Performance • Cinematheque</small></p>
-                        <div class="bg-white rounded-3 p-2 d-inline-block w-50">
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg" alt="Check-In QR Code" id="checkInBtn" class="img-fluid d-block mx-auto">
+                        <div class="bg-white rounded-3 p-2 d-inline-block w-50" id="checkInBtn" style="cursor: pointer;">
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg" alt="Check-In QR Code" class="img-fluid d-block mx-auto">
                         </div>
                         <div class="small text-white-50 mt-2">Tap QR to simulate scan</div>
                     </div>
@@ -927,14 +958,19 @@
             updateCountdownBadges();
             
             // Add event listener to the check-in button
-            card.querySelector('#checkInBtn').addEventListener('click', () => {
-                state.currentMode = 'explore';
-                addTimelineEntry('Arrived at CANYON', cardId);
-                // Show greeting bubble before the programming cards
-                addAIMessage("welcome to CANYON, here's what's on this evening");
-                renderExploreState();
-                updateSuggestions();
-            });
+            const checkInBtn = card.querySelector('#checkInBtn');
+            if (checkInBtn) {
+                checkInBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    state.currentMode = 'explore';
+                    addTimelineEntry('Arrived at CANYON', cardId);
+                    renderExploreState();
+                    updateSuggestions();
+                });
+                // Also make the entire QR code area clickable
+                checkInBtn.style.cursor = 'pointer';
+            }
         }
 
         // Render the "Explore" state
@@ -1067,9 +1103,31 @@
                 updateCarouselDots(carouselContainer, currentIndex);
             });
             
+            // Attach swipe listeners to carousel
+            attachSwipeListeners(carouselContainer);
+            
             screen.appendChild(carouselContainer);
             screen.appendChild(dotsContainer);
             feed.appendChild(screen);
+            
+            // Scroll to the new screen and activate it
+            setTimeout(() => {
+                const screens = document.querySelectorAll('.screen');
+                const screenIndex = Array.from(screens).indexOf(screen);
+                // Remove active from all screens
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                // Add active to this screen
+                screen.classList.add('active');
+                feed.scrollTo({
+                    top: screenIndex * (window.innerHeight - 56),
+                    behavior: 'smooth'
+                });
+            }, 100);
+            
+            // Attach swipe listeners to carousel
+            if (typeof attachSwipeListeners === 'function') {
+                attachSwipeListeners(carouselContainer);
+            }
             
             // Render countdowns immediately
             updateCountdownBadges();
