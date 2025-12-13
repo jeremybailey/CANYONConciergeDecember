@@ -10,26 +10,65 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
         body {
-            padding-bottom: 0; /* Space for fixed bottom bar */
+            padding-bottom: 0;
             background-color: #1a1a1a;
             color: #ffffff;
+            overflow: hidden; /* Prevent body scroll */
         }
         .feed-container {
-            max-height: calc(100vh - 56px - 120px); /* Viewport height - navbar - bottom bar */
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+            height: calc(100vh - 56px);
+            overflow-y: scroll;
+            overflow-x: hidden;
+            scroll-snap-type: y mandatory;
+            -webkit-overflow-scrolling: touch;
             scroll-behavior: smooth;
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            padding: 1rem 1rem 100px 1rem;
-            margin-bottom: 0;
+            position: relative;
         }
-        /* Mobile-specific adjustments */
-        @media (max-width: 768px) {
-            .feed-container {
-                padding-bottom: 120px; /* Extra space on mobile to prevent content being hidden */
-            }
+        .screen {
+            width: 100%;
+            height: calc(100vh - 56px);
+            scroll-snap-align: start;
+            scroll-snap-stop: always;
+            position: relative;
+            overflow: hidden;
+        }
+        .carousel-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            overflow-x: scroll;
+            overflow-y: hidden;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+            scroll-behavior: smooth;
+        }
+        .carousel-item {
+            min-width: 100%;
+            height: 100%;
+            scroll-snap-align: start;
+            scroll-snap-stop: always;
+            position: relative;
+        }
+        .carousel-dots {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            z-index: 100;
+        }
+        .carousel-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.3);
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .carousel-dot.active {
+            background-color: rgba(255, 255, 255, 0.9);
         }
         .message-bubble {
             max-width: 80%;
@@ -48,6 +87,9 @@
             animation: slideIn 0.3s ease-out forwards;
             border-radius: 15px;
             border: none !important;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
         }
         .card-img-top {
             object-fit: cover;
@@ -55,6 +97,11 @@
             width: 100%;
             border-top-left-radius: 15px;
             border-top-right-radius: 15px;
+            flex: 1;
+            height: 60%;
+        }
+        .card-body {
+            flex: 0 0 auto;
         }
         .object-fit-cover {
             object-fit: cover;
@@ -85,6 +132,9 @@
         }
         .fixed-bottom .input-group {
             border-top: none !important;
+        }
+        .fixed-bottom {
+            display: none; /* Hidden - using swipe up for suggestions */
         }
         /* Cover any gap above the fixed-bottom tray */
         .fixed-bottom::before {
@@ -216,7 +266,7 @@
     </nav>
 
     <!-- Main Content -->
-    <div class="container-fluid mt-5 pt-3 feed-container" id="feed">
+    <div class="feed-container" id="feed">
         <!-- Feed content will be dynamically inserted here -->
     </div>
 
@@ -342,6 +392,112 @@
 
         window.addEventListener('resize', equalizeCardSections);
 
+        // Swipe detection
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchEndX = 0;
+        let touchEndY = 0;
+        const minSwipeDistance = 50;
+
+        function handleSwipe() {
+            const deltaX = touchEndX - touchStartX;
+            const deltaY = touchEndY - touchStartY;
+            const feed = document.getElementById('feed');
+            const currentScreen = document.querySelector('.screen.active') || document.querySelector('.screen');
+            
+            // Horizontal swipe (left/right) - for carousel
+            if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minSwipeDistance) {
+                if (deltaX < 0) {
+                    // Swipe left - next carousel item
+                    const carousel = currentScreen?.querySelector('.carousel-container');
+                    if (carousel) {
+                        const items = carousel.querySelectorAll('.carousel-item');
+                        const currentIndex = Math.round(carousel.scrollLeft / window.innerWidth);
+                        if (currentIndex < items.length - 1) {
+                            carousel.scrollTo({
+                                left: (currentIndex + 1) * window.innerWidth,
+                                behavior: 'smooth'
+                            });
+                            updateCarouselDots(carousel, currentIndex + 1);
+                        }
+                    }
+                } else {
+                    // Swipe right - previous carousel item
+                    const carousel = currentScreen?.querySelector('.carousel-container');
+                    if (carousel) {
+                        const currentIndex = Math.round(carousel.scrollLeft / window.innerWidth);
+                        if (currentIndex > 0) {
+                            carousel.scrollTo({
+                                left: (currentIndex - 1) * window.innerWidth,
+                                behavior: 'smooth'
+                            });
+                            updateCarouselDots(carousel, currentIndex - 1);
+                        }
+                    }
+                }
+            }
+            // Vertical swipe
+            else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > minSwipeDistance) {
+                if (deltaY < 0) {
+                    // Swipe up - show suggestions screen
+                    showSuggestionsScreen();
+                } else {
+                    // Swipe down - previous screen
+                    const screens = document.querySelectorAll('.screen');
+                    const currentIndex = Array.from(screens).findIndex(s => s.classList.contains('active'));
+                    if (currentIndex > 0) {
+                        screens[currentIndex].classList.remove('active');
+                        screens[currentIndex - 1].classList.add('active');
+                        feed.scrollTo({
+                            top: (currentIndex - 1) * (window.innerHeight - 56),
+                            behavior: 'smooth'
+                        });
+                    }
+                }
+            }
+        }
+
+        function updateCarouselDots(carousel, activeIndex) {
+            const dots = carousel.parentElement.querySelectorAll('.carousel-dot');
+            dots.forEach((dot, index) => {
+                dot.classList.toggle('active', index === activeIndex);
+            });
+        }
+
+        function showSuggestionsScreen() {
+            let suggestionsScreen = document.getElementById('suggestions-screen');
+            if (!suggestionsScreen) {
+                suggestionsScreen = document.createElement('div');
+                suggestionsScreen.id = 'suggestions-screen';
+                suggestionsScreen.className = 'screen';
+                suggestionsScreen.innerHTML = `
+                    <div class="d-flex flex-column justify-content-center align-items-center h-100 p-4">
+                        <h3 class="mb-4 text-white">Suggested Prompts</h3>
+                        <div id="suggestions-list" class="w-100 d-flex flex-column gap-3"></div>
+                    </div>
+                `;
+                document.getElementById('feed').appendChild(suggestionsScreen);
+                updateSuggestionsList();
+            }
+            suggestionsScreen.classList.add('active');
+            const feed = document.getElementById('feed');
+            const screens = document.querySelectorAll('.screen');
+            const screenIndex = Array.from(screens).indexOf(suggestionsScreen);
+            feed.scrollTo({
+                top: screenIndex * (window.innerHeight - 56),
+                behavior: 'smooth'
+            });
+        }
+
+        function updateSuggestionsList() {
+            const suggestionsList = document.getElementById('suggestions-list');
+            if (!suggestionsList) return;
+            const suggestions = ['Order a drink', 'Dinner reservations', 'Artist biography', 'Related works'];
+            suggestionsList.innerHTML = suggestions.map(s => `
+                <button class="btn btn-outline-light btn-lg w-100 text-start">${s}</button>
+            `).join('');
+        }
+
         // Initialize the app
         function init() {
             // Set a shared countdown deadline for Lu Yang across cards
@@ -349,6 +505,19 @@
             renderArriveState();
             setupEventListeners();
             updateSuggestions();
+            
+            // Add swipe listeners
+            const feed = document.getElementById('feed');
+            feed.addEventListener('touchstart', (e) => {
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+            });
+            feed.addEventListener('touchend', (e) => {
+                touchEndX = e.changedTouches[0].clientX;
+                touchEndY = e.changedTouches[0].clientY;
+                handleSwipe();
+            });
+            
             // Start countdown updates
             startCountdownTicker();
             // Initial equalization
@@ -427,14 +596,18 @@
             const widgetId = `drink-widget-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             const widgetElement = document.createElement('div');
             widgetElement.id = widgetId;
-            widgetElement.className = 'd-flex mb-2 message-container justify-content-start';
+            const screen = document.createElement('div');
+            screen.className = 'screen';
+            widgetElement.className = 'd-flex h-100 message-container justify-content-start align-items-center';
+            widgetElement.style.padding = '2rem';
             
             const widget = document.createElement('div');
-            widget.className = 'message-bubble p-3 rounded-3 text-white';
+            widget.className = 'message-bubble p-4 rounded-3 text-white';
             widget.style.backgroundColor = '#2d2d2d';
-            widget.style.maxWidth = 'calc((100% - 2rem) * 0.8)';
-            widget.style.width = 'calc((100% - 2rem) * 0.8)';
+            widget.style.maxWidth = '90%';
+            widget.style.width = '90%';
             widget.style.boxSizing = 'border-box';
+            widget.style.margin = '0 auto';
             
             let locationLabel = state.currentLocation || 'pick up at the bar';
             let locationClass = state.currentLocation ? 'text-white' : 'text-white';
@@ -487,7 +660,19 @@
             `;
             
             widgetElement.appendChild(widget);
-            feed.appendChild(widgetElement);
+            screen.appendChild(widgetElement);
+            feed.appendChild(screen);
+            
+            // Scroll to the new screen
+            setTimeout(() => {
+                const screens = document.querySelectorAll('.screen');
+                const screenIndex = Array.from(screens).indexOf(screen);
+                feed.scrollTo({
+                    top: screenIndex * (window.innerHeight - 56),
+                    behavior: 'smooth'
+                });
+                screen.classList.add('active');
+            }, 100);
             
             // Function to calculate and update total
             const updateTotal = () => {
@@ -567,13 +752,18 @@
 
         // Render a message in the feed
         function renderMessage(message) {
+            const screen = document.createElement('div');
+            screen.className = 'screen';
+            
             const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            screen.id = messageId;
+            
             const messageElement = document.createElement('div');
-            messageElement.id = messageId;
-            messageElement.className = `d-flex mb-2 message-container ${message.type === 'user' ? 'justify-content-end' : 'justify-content-start'}`;
+            messageElement.className = `d-flex h-100 message-container ${message.type === 'user' ? 'justify-content-end align-items-center' : 'justify-content-start align-items-center'}`;
+            messageElement.style.padding = '2rem';
             
             const bubble = document.createElement('div');
-            bubble.className = `message-bubble p-3 rounded-3 ${
+            bubble.className = `message-bubble p-4 rounded-3 ${
                 message.type === 'user' 
                     ? 'bg-primary text-white' 
                     : 'text-white'
@@ -581,19 +771,24 @@
             if (message.type === 'ai') {
                 bubble.style.backgroundColor = '#2d2d2d';
             }
+            bubble.style.maxWidth = '80%';
+            bubble.style.fontSize = '1.2rem';
             bubble.textContent = message.text;
             
             messageElement.appendChild(bubble);
-            feed.appendChild(messageElement);
+            screen.appendChild(messageElement);
+            feed.appendChild(screen);
             
-            // Trigger reflow to ensure animation plays
-            void messageElement.offsetWidth;
-            
-            // Scroll to the bottom when new message is added with smooth behavior
-            feed.scrollTo({
-                top: feed.scrollHeight,
-                behavior: 'smooth'
-            });
+            // Scroll to the new screen
+            setTimeout(() => {
+                const screens = document.querySelectorAll('.screen');
+                const screenIndex = Array.from(screens).indexOf(screen);
+                feed.scrollTo({
+                    top: screenIndex * (window.innerHeight - 56),
+                    behavior: 'smooth'
+                });
+                screen.classList.add('active');
+            }, 100);
             
             return messageId;
         }
@@ -700,18 +895,21 @@
         function renderArriveState() {
             feed.innerHTML = ''; // Clear the feed
             
+            const screen = document.createElement('div');
+            screen.className = 'screen active';
+            
             const cardId = `checkin-card-${Date.now()}`;
             const card = document.createElement('div');
             card.id = cardId;
-            card.className = 'card mb-3 position-relative';
+            card.className = 'card position-relative';
             card.innerHTML = `
-                <div class="position-relative overflow-hidden rounded-15">
+                <div class="position-relative overflow-hidden rounded-15 h-100">
                     <img src="https://i.ytimg.com/vi/fNr9WqMPGdo/maxresdefault.jpg" class="position-absolute top-0 start-0 w-100 h-100 object-fit-cover" alt="Lu Yang - DOKU, The Binary World (motion capture performance)">
                     <div class="position-absolute top-0 start-0 w-100 h-100" style="background: linear-gradient(to bottom, rgba(0,0,0,0.75), rgba(0,0,0,0.4));"></div>
                     <div class="position-absolute top-0 end-0 m-2 d-flex flex-column align-items-end gap-1 z-1">
                         <span class="badge glass-badge rounded-pill countdown-badge" data-prefix="Starts in" data-suffix="" data-deadline="${state.luYangDeadline}"></span>
                     </div>
-                    <div class="card-body position-relative text-white text-center d-flex flex-column align-items-center pt-5">
+                    <div class="card-body position-relative text-white text-center d-flex flex-column align-items-center justify-content-center h-100 pt-5">
                         <p class="card-text h6 text-white text-opacity-75 mb-1">On Now</p>
                         <h1 class="card-title h4 text-white">DOKU, The Binary World by Lu Yang</h1>
                         <p class="card-text"><small class="text-white">Performance • Cinematheque</small></p>
@@ -722,16 +920,11 @@
                     </div>
                 </div>
             `;
-            feed.appendChild(card);
-            // Scroll to the bottom after adding the card
-            setTimeout(() => {
-                feed.scrollTop = feed.scrollHeight;
-            }, 100);
+            screen.appendChild(card);
+            feed.appendChild(screen);
+            
             // Render countdown immediately
             updateCountdownBadges();
-            // Equalize image/body heights
-            attachImageLoadEqualizer(card);
-            equalizeCardSections();
             
             // Add event listener to the check-in button
             card.querySelector('#checkInBtn').addEventListener('click', () => {
@@ -772,18 +965,30 @@
                 }
             ];
             
-            // Create a container for explore cards
-            const container = document.createElement('div');
-            container.className = '';
+            // Create a screen for the explore state
+            const screen = document.createElement('div');
+            screen.className = 'screen';
+            
+            // Create carousel container
+            const carouselContainer = document.createElement('div');
+            carouselContainer.className = 'carousel-container';
+            
+            // Create carousel dots
+            const dotsContainer = document.createElement('div');
+            dotsContainer.className = 'carousel-dots';
             
             exploreCards.forEach((item, index) => {
                 const cardId = `artwork-card-${index}-${Date.now()}`;
-                const card = document.createElement('div');
-                card.id = cardId;
-                card.className = 'card mb-3 position-relative';
                 item.cardId = cardId; // Store ID for later use
                 
-                card.style.animationDelay = (2 + index * 0.25) + 's';
+                // Create carousel item
+                const carouselItem = document.createElement('div');
+                carouselItem.className = 'carousel-item';
+                
+                const card = document.createElement('div');
+                card.id = cardId;
+                card.className = 'card position-relative';
+                
                 let timingBadgeHTML = '';
                 if (item.deadlineMs) {
                     timingBadgeHTML = `<span class=\"badge glass-badge rounded-pill countdown-badge\" data-prefix=\"${item.prefix || ''}\" data-suffix=\"\" data-deadline=\"${item.deadlineMs}\"></span>`;
@@ -794,7 +999,7 @@
                     timingBadgeHTML = `<span class=\"badge glass-badge rounded-pill\">${item.time}</span>`;
                 }
                 card.innerHTML = `
-                    <div class="position-relative overflow-hidden rounded-15">
+                    <div class="position-relative overflow-hidden rounded-15 h-100">
                         <img src="${item.image}" class="position-absolute top-0 start-0 w-100 h-100 object-fit-cover" alt="${item.title}">
                         <div class="position-absolute top-0 start-0 w-100 h-100" style="background: linear-gradient(to right, rgba(0,0,0,0.65), rgba(0,0,0,0.35));"></div>
                         <div class="position-absolute top-0 end-0 m-2 d-flex flex-column align-items-end gap-1">${timingBadgeHTML}</div>
@@ -802,7 +1007,7 @@
                             <i class="bi bi-geo-alt pin-icon"></i>
                             <span class="pin-label">I'm Here</span>
                         </div>
-                        <div class="card-body position-relative text-white d-flex flex-column justify-content-center" style="min-height: 140px; padding-top: 30px; padding-bottom: 50px;">
+                        <div class="card-body position-relative text-white d-flex flex-column justify-content-center h-100" style="padding-top: 30px; padding-bottom: 50px;">
                             <h5 class="card-title mb-1 text-white">${item.title}</h5>
                             <div class="small text-white">${item.mediaType ? item.mediaType : 'Other'} • ${item.location ? item.location : ''}</div>
                         </div>
@@ -840,75 +1045,71 @@
                     showEnrichState(item);
                 });
                 
-                container.appendChild(card);
+                carouselItem.appendChild(card);
+                carouselContainer.appendChild(carouselItem);
+                
+                // Create dot
+                const dot = document.createElement('button');
+                dot.className = `carousel-dot ${index === 0 ? 'active' : ''}`;
+                dot.addEventListener('click', () => {
+                    carouselContainer.scrollTo({
+                        left: index * window.innerWidth,
+                        behavior: 'smooth'
+                    });
+                    updateCarouselDots(carouselContainer, index);
+                });
+                dotsContainer.appendChild(dot);
             });
             
-            // Add the explore cards to the feed
-            feed.appendChild(container);
-            
-            // Add "show all" ghost button (appears after all cards finish animating)
-            const showAllButton = document.createElement('button');
-            showAllButton.className = 'btn btn-outline-light btn-sm rounded-pill mb-3';
-            showAllButton.textContent = 'Show More';
-            showAllButton.style.opacity = '0';
-            showAllButton.style.transform = 'translateY(20px)';
-            showAllButton.style.transition = 'all 0.3s ease-out';
-            showAllButton.style.animationDelay = '2.8s';
-            showAllButton.style.marginTop = '-20px';
-            showAllButton.addEventListener('click', () => {
-                // Placeholder for show all functionality
-                console.log('Show all clicked');
+            // Update dots on scroll
+            carouselContainer.addEventListener('scroll', () => {
+                const currentIndex = Math.round(carouselContainer.scrollLeft / window.innerWidth);
+                updateCarouselDots(carouselContainer, currentIndex);
             });
-            feed.appendChild(showAllButton);
             
-            // Animate button in after cards finish
-            setTimeout(() => {
-                showAllButton.style.opacity = '1';
-                showAllButton.style.transform = 'translateY(0)';
-            }, 2800);
+            screen.appendChild(carouselContainer);
+            screen.appendChild(dotsContainer);
+            feed.appendChild(screen);
             
-            // Scroll to the bottom after adding the cards
-            setTimeout(() => {
-                feed.scrollTop = feed.scrollHeight;
-            }, 100);
             // Render countdowns immediately
             updateCountdownBadges();
-            // Equalize image/body heights
-            attachImageLoadEqualizer(container);
-            equalizeCardSections();
         }
 
         // Show the "Enrich" state for a specific artwork
         function showEnrichState(artwork, skipTimelineEntry = false) {
             state.currentMode = 'enrich';
             
+            const screen = document.createElement('div');
+            screen.className = 'screen';
+            
             const enrichCardId = `enrich-card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             const enrichCard = document.createElement('div');
             enrichCard.id = enrichCardId;
-            enrichCard.className = 'card mb-3 equalize-2x bg-dark text-white';
+            enrichCard.className = 'card equalize-2x bg-dark text-white';
             enrichCard.innerHTML = `
                 <div class="position-absolute top-0 end-0 m-2 d-flex flex-column align-items-end gap-1 z-1">
                     <span class="badge glass-badge rounded-pill">Just Seen</span>
                 </div>
                 <img src="${artwork.image}" class="card-img-top" alt="${artwork.title}">
-                <div class="card-body text-center text-white">
+                <div class="card-body text-center text-white d-flex flex-column justify-content-center">
                     <h2 class="card-title h4 text-white">${artwork.title}</h2>
                     <p class="card-text text-white-50">Explore more about ${artwork.title} and its significance in contemporary art.</p>
                     <button class="btn btn-light btn-lg w-100" id="learnMoreBtn">Learn More</button>
                 </div>
             `;
             
-            // Add the enrich card to the feed
-            feed.appendChild(enrichCard);
-            // Scroll to the card with better positioning (not too high)
+            screen.appendChild(enrichCard);
+            feed.appendChild(screen);
+            
+            // Scroll to the new screen
             setTimeout(() => {
-                const cardTop = enrichCard.offsetTop;
-                const feedHeight = feed.clientHeight;
-                // Scroll so the card is positioned in the upper portion but not at the very top
+                const screens = document.querySelectorAll('.screen');
+                const screenIndex = Array.from(screens).indexOf(screen);
                 feed.scrollTo({
-                    top: cardTop - 60, // Offset to keep it below the navbar area
+                    top: screenIndex * (window.innerHeight - 56),
                     behavior: 'smooth'
                 });
+                screen.classList.add('active');
             }, 100);
             
             // Add timeline entry - always use the enrich card ID for "Viewed details"
