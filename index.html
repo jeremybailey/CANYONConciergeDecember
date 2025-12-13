@@ -550,7 +550,7 @@
                 if (location) {
                     addNotification(`Your drink is on the way! Estimated time of arrival is ${deliveryTimeString} to ${location}`);
                 } else {
-                    addNotification(`Your drink is ready for pickup at the bar! Estimated ready time is ${deliveryTimeString}`);
+                    addNotification(`Your drink will be ready for you at the bar`);
                 }
                 
                 alert(`Order confirmed! ${selectedDrinks.length > 0 ? `Drinks: ${selectedDrinks.join(', ')}. ` : ''}Total: ${total}`);
@@ -709,7 +709,7 @@
                     <img src="https://i.ytimg.com/vi/fNr9WqMPGdo/maxresdefault.jpg" class="position-absolute top-0 start-0 w-100 h-100 object-fit-cover" alt="Lu Yang - DOKU, The Binary World (motion capture performance)">
                     <div class="position-absolute top-0 start-0 w-100 h-100" style="background: linear-gradient(to bottom, rgba(0,0,0,0.75), rgba(0,0,0,0.4));"></div>
                     <div class="position-absolute top-0 end-0 m-2 d-flex flex-column align-items-end gap-1 z-1">
-                        <span class="badge glass-badge rounded-pill countdown-badge" data-prefix="Beginning in" data-suffix="" data-deadline="${state.luYangDeadline}"></span>
+                        <span class="badge glass-badge rounded-pill countdown-badge" data-prefix="Starts in" data-suffix="" data-deadline="${state.luYangDeadline}"></span>
                     </div>
                     <div class="card-body position-relative text-white text-center d-flex flex-column align-items-center pt-5">
                         <p class="card-text h6 text-white text-opacity-75 mb-1">On Now</p>
