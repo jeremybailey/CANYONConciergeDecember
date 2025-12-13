@@ -896,9 +896,15 @@
             
             // Add the enrich card to the feed
             feed.appendChild(enrichCard);
-            // Scroll to the bottom after adding the card
+            // Scroll to the card with better positioning (not too high)
             setTimeout(() => {
-                feed.scrollTop = feed.scrollHeight;
+                const cardTop = enrichCard.offsetTop;
+                const feedHeight = feed.clientHeight;
+                // Scroll so the card is positioned in the upper portion but not at the very top
+                feed.scrollTo({
+                    top: cardTop - 60, // Offset to keep it below the navbar area
+                    behavior: 'smooth'
+                });
             }, 100);
             
             // Add timeline entry - always use the enrich card ID for "Viewed details"
