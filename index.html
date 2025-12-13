@@ -436,8 +436,8 @@
             widget.style.width = 'calc((100% - 2rem) * 0.8)';
             widget.style.boxSizing = 'border-box';
             
-            let locationLabel = state.currentLocation || 'add a delivery location';
-            let locationClass = state.currentLocation ? 'text-white' : 'text-white-50';
+            let locationLabel = state.currentLocation || 'pick up at the bar';
+            let locationClass = state.currentLocation ? 'text-white' : 'text-white';
             let locationIcon = state.currentLocation ? '<i class="bi bi-geo-alt-fill me-2 text-white" style="font-size: 16px;"></i>' : '';
             
             widget.innerHTML = `
@@ -546,8 +546,12 @@
                 // Add notification for drink delivery
                 const deliveryTime = new Date(Date.now() + 8 * 60 * 1000); // 8 minutes from now
                 const deliveryTimeString = deliveryTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-                const location = state.currentLocation || 'your location';
-                addNotification(`Your drink is on the way! Estimated time of arrival is ${deliveryTimeString} to ${location}`);
+                const location = state.currentLocation;
+                if (location) {
+                    addNotification(`Your drink is on the way! Estimated time of arrival is ${deliveryTimeString} to ${location}`);
+                } else {
+                    addNotification(`Your drink is ready for pickup at the bar! Estimated ready time is ${deliveryTimeString}`);
+                }
                 
                 alert(`Order confirmed! ${selectedDrinks.length > 0 ? `Drinks: ${selectedDrinks.join(', ')}. ` : ''}Total: ${total}`);
             });
