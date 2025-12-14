@@ -17,6 +17,7 @@
         }
         .feed-container {
             height: calc(100vh - 56px);
+            margin-top: 56px; /* Account for fixed navbar */
             overflow-y: scroll;
             overflow-x: hidden;
             scroll-snap-type: y mandatory;
@@ -28,6 +29,7 @@
         .screen {
             width: 100%;
             height: calc(100vh - 56px);
+            min-height: calc(100vh - 56px);
             scroll-snap-align: start;
             scroll-snap-stop: always;
             position: relative;
@@ -530,8 +532,9 @@
                     if (currentIndex < screens.length - 1) {
                         screens[currentIndex]?.classList.remove('active');
                         screens[currentIndex + 1].classList.add('active');
+                        const screenHeight = window.innerHeight - 56;
                         feed.scrollTo({
-                            top: (currentIndex + 1) * (window.innerHeight - 56),
+                            top: (currentIndex + 1) * screenHeight,
                             behavior: 'smooth'
                         });
                     } else {
@@ -543,8 +546,9 @@
                     if (currentIndex > 0) {
                         screens[currentIndex]?.classList.remove('active');
                         screens[currentIndex - 1].classList.add('active');
+                        const screenHeight = window.innerHeight - 56;
                         feed.scrollTo({
-                            top: (currentIndex - 1) * (window.innerHeight - 56),
+                            top: (currentIndex - 1) * screenHeight,
                             behavior: 'smooth'
                         });
                     }
@@ -764,8 +768,9 @@
             setTimeout(() => {
                 const screens = document.querySelectorAll('.screen');
                 const screenIndex = Array.from(screens).indexOf(screen);
+                const screenHeight = window.innerHeight - 56;
                 feed.scrollTo({
-                    top: screenIndex * (window.innerHeight - 56),
+                    top: screenIndex * screenHeight,
                     behavior: 'smooth'
                 });
                 screen.classList.add('active');
@@ -880,8 +885,9 @@
             setTimeout(() => {
                 const screens = document.querySelectorAll('.screen');
                 const screenIndex = Array.from(screens).indexOf(screen);
+                const screenHeight = window.innerHeight - 56;
                 feed.scrollTo({
-                    top: screenIndex * (window.innerHeight - 56),
+                    top: screenIndex * screenHeight,
                     behavior: 'smooth'
                 });
                 screen.classList.add('active');
@@ -1258,8 +1264,9 @@
                 document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
                 // Add active to this screen
                 screen.classList.add('active');
+                const screenHeight = window.innerHeight - 56;
                 feed.scrollTo({
-                    top: screenIndex * (window.innerHeight - 56),
+                    top: screenIndex * screenHeight,
                     behavior: 'smooth'
                 });
             }, 100);
@@ -1298,8 +1305,9 @@
             setTimeout(() => {
                 const screens = document.querySelectorAll('.screen');
                 const screenIndex = Array.from(screens).indexOf(screen);
+                const screenHeight = window.innerHeight - 56;
                 feed.scrollTo({
-                    top: screenIndex * (window.innerHeight - 56),
+                    top: screenIndex * screenHeight,
                     behavior: 'smooth'
                 });
                 screen.classList.add('active');
