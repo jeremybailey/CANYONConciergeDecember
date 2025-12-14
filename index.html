@@ -49,6 +49,62 @@
             border-radius: 15px;
             border: none !important;
         }
+        .artwork-carousel {
+            position: relative;
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: visible;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+            scroll-behavior: smooth;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            touch-action: pan-x;
+        }
+        .artwork-carousel::-webkit-scrollbar {
+            display: none;
+        }
+        .artwork-carousel-wrapper {
+            display: flex;
+            gap: 1rem;
+            padding-right: 1rem;
+        }
+        .artwork-carousel-item {
+            min-width: 85%;
+            width: 85%;
+            flex-shrink: 0;
+            scroll-snap-align: start;
+            position: relative;
+        }
+        .artwork-carousel-item .card {
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+        }
+        .artwork-carousel-item .card > div {
+            height: 100%;
+            width: 100%;
+        }
+        .carousel-dots {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+        }
+        .carousel-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.3);
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            padding: 0;
+        }
+        .carousel-dot.active {
+            background-color: rgba(255, 255, 255, 0.9);
+        }
         .card-img-top {
             object-fit: cover;
             display: block;
@@ -341,6 +397,34 @@
         }
 
         window.addEventListener('resize', equalizeCardSections);
+
+        // Handle carousel swipe
+        function handleCarouselSwipe(carousel, startX, endX) {
+            const threshold = 50;
+            const diff = startX - endX;
+            
+            if (Math.abs(diff) > threshold) {
+                const cardWidth = carousel.clientWidth * 0.85;
+                const gap = 16;
+                const scrollDistance = cardWidth + gap;
+                const currentIndex = Math.round(carousel.scrollLeft / scrollDistance);
+                const items = carousel.querySelectorAll('.artwork-carousel-item');
+                
+                if (diff > 0 && currentIndex < items.length - 1) {
+                    // Swipe left - next
+                    carousel.scrollTo({
+                        left: (currentIndex + 1) * scrollDistance,
+                        behavior: 'smooth'
+                    });
+                } else if (diff < 0 && currentIndex > 0) {
+                    // Swipe right - previous
+                    carousel.scrollTo({
+                        left: (currentIndex - 1) * scrollDistance,
+                        behavior: 'smooth'
+                    });
+                }
+            }
+        }
 
         // Initialize the app
         function init() {
@@ -737,8 +821,6 @@
             card.querySelector('#checkInBtn').addEventListener('click', () => {
                 state.currentMode = 'explore';
                 addTimelineEntry('Arrived at CANYON', cardId);
-                // Show greeting bubble before the programming cards
-                addAIMessage("welcome to CANYON, here's what's on this evening");
                 renderExploreState();
                 updateSuggestions();
             });
@@ -772,9 +854,20 @@
                 }
             ];
             
-            // Create a container for explore cards
-            const container = document.createElement('div');
-            container.className = '';
+            // Create carousel container
+            const carouselContainer = document.createElement('div');
+            carouselContainer.className = 'artwork-carousel';
+            carouselContainer.id = 'artwork-carousel';
+            carouselContainer.style.width = '100%';
+            carouselContainer.style.display = 'block';
+            
+            const carouselWrapper = document.createElement('div');
+            carouselWrapper.className = 'artwork-carousel-wrapper';
+            carouselWrapper.style.display = 'flex';
+            
+            // Create dots container
+            const dotsContainer = document.createElement('div');
+            dotsContainer.className = 'carousel-dots';
             
             exploreCards.forEach((item, index) => {
                 const cardId = `artwork-card-${index}-${Date.now()}`;
@@ -794,17 +887,17 @@
                     timingBadgeHTML = `<span class=\"badge glass-badge rounded-pill\">${item.time}</span>`;
                 }
                 card.innerHTML = `
-                    <div class="position-relative overflow-hidden rounded-15">
-                        <img src="${item.image}" class="position-absolute top-0 start-0 w-100 h-100 object-fit-cover" alt="${item.title}">
-                        <div class="position-absolute top-0 start-0 w-100 h-100" style="background: linear-gradient(to right, rgba(0,0,0,0.65), rgba(0,0,0,0.35));"></div>
-                        <div class="position-absolute top-0 end-0 m-2 d-flex flex-column align-items-end gap-1">${timingBadgeHTML}</div>
-                        <div class="pin-container" data-artwork-id="${index}">
+                    <div class="position-relative rounded-15 h-100" style="overflow: hidden; display: flex; flex-direction: column;">
+                        <img src="${item.image}" class="position-absolute top-0 start-0 w-100 h-100" style="object-fit: cover; z-index: 1;" alt="${item.title}">
+                        <div class="position-absolute top-0 start-0 w-100 h-100" style="background: linear-gradient(to right, rgba(0,0,0,0.65), rgba(0,0,0,0.35)); z-index: 2;"></div>
+                        <div class="position-absolute top-0 end-0 m-2 d-flex flex-column align-items-end gap-1" style="z-index: 5;">${timingBadgeHTML}</div>
+                        <div class="pin-container" data-artwork-id="${index}" style="z-index: 5;">
                             <i class="bi bi-geo-alt pin-icon"></i>
                             <span class="pin-label">I'm Here</span>
                         </div>
-                        <div class="card-body position-relative text-white d-flex flex-column justify-content-center" style="min-height: 140px; padding-top: 30px; padding-bottom: 50px;">
-                            <h5 class="card-title mb-1 text-white">${item.title}</h5>
-                            <div class="small text-white">${item.mediaType ? item.mediaType : 'Other'} • ${item.location ? item.location : ''}</div>
+                        <div class="position-absolute bottom-0 start-0 end-0 text-white d-flex flex-column justify-content-end" style="padding: 2rem; padding-bottom: 3rem; z-index: 5; pointer-events: none;">
+                            <h5 class="card-title mb-1 text-white" style="font-size: 1.5rem; font-weight: 600; pointer-events: auto;">${item.title}</h5>
+                            <div class="small text-white" style="pointer-events: auto;">${item.mediaType ? item.mediaType : 'Other'} • ${item.location ? item.location : ''}</div>
                         </div>
                     </div>
                 `;
@@ -840,42 +933,117 @@
                     showEnrichState(item);
                 });
                 
-                container.appendChild(card);
+                // Wrap card in carousel item
+                const carouselItem = document.createElement('div');
+                carouselItem.className = 'artwork-carousel-item';
+                carouselItem.appendChild(card);
+                carouselWrapper.appendChild(carouselItem);
+                
+                // Create dot
+                const dot = document.createElement('button');
+                dot.className = `carousel-dot ${index === 0 ? 'active' : ''}`;
+                dot.setAttribute('aria-label', `Go to slide ${index + 1}`);
+                dot.addEventListener('click', () => {
+                    const itemWidth = carouselContainer.clientWidth;
+                    carouselContainer.scrollTo({
+                        left: index * itemWidth,
+                        behavior: 'smooth'
+                    });
+                });
+                dotsContainer.appendChild(dot);
             });
             
-            // Add the explore cards to the feed
-            feed.appendChild(container);
+            carouselContainer.appendChild(carouselWrapper);
             
-            // Add "show all" ghost button (appears after all cards finish animating)
-            const showAllButton = document.createElement('button');
-            showAllButton.className = 'btn btn-outline-light btn-sm rounded-pill mb-3';
-            showAllButton.textContent = 'Show More';
-            showAllButton.style.opacity = '0';
-            showAllButton.style.transform = 'translateY(20px)';
-            showAllButton.style.transition = 'all 0.3s ease-out';
-            showAllButton.style.animationDelay = '2.8s';
-            showAllButton.style.marginTop = '-20px';
-            showAllButton.addEventListener('click', () => {
-                // Placeholder for show all functionality
-                console.log('Show all clicked');
+            // Set explicit widths and heights for carousel items (square aspect ratio)
+            setTimeout(() => {
+                const containerWidth = carouselContainer.clientWidth || window.innerWidth;
+                const items = carouselWrapper.querySelectorAll('.artwork-carousel-item');
+                console.log('Setting up carousel items:', items.length, 'container width:', containerWidth);
+                if (items.length === 0) {
+                    console.error('No carousel items found!');
+                    return;
+                }
+                
+                // Calculate card dimensions - 85% width to show next card, 30% taller than width
+                const cardWidth = containerWidth * 0.85;
+                const cardHeight = cardWidth * 1.3;
+                
+                // Set carousel container height to match card height so it doesn't get cropped
+                carouselContainer.style.height = cardHeight + 'px';
+                carouselContainer.style.minHeight = cardHeight + 'px';
+                
+                items.forEach((item, index) => {
+                    // Set item dimensions - narrower to show next card
+                    item.style.minWidth = cardWidth + 'px';
+                    item.style.width = cardWidth + 'px';
+                    item.style.height = cardHeight + 'px';
+                    item.style.flexShrink = '0';
+                    item.style.display = 'flex';
+                    
+                    const card = item.querySelector('.card');
+                    if (card) {
+                        card.style.height = '100%';
+                        card.style.width = '100%';
+                        card.style.minHeight = cardHeight + 'px';
+                        console.log(`Item ${index}:`, card.offsetWidth, 'x', card.offsetHeight);
+                    } else {
+                        console.error(`Item ${index} has no card!`, item.innerHTML);
+                    }
+                });
+                // Ensure wrapper has correct width - account for gap between cards
+                const gap = 16; // 1rem = 16px
+                const totalWidth = (cardWidth * items.length) + (gap * (items.length - 1)) + 16; // +16 for padding-right
+                carouselWrapper.style.width = totalWidth + 'px';
+                carouselWrapper.style.display = 'flex';
+                console.log('Carousel wrapper width:', totalWidth, 'px');
+                console.log('Carousel container height:', cardHeight, 'px');
+            }, 150);
+            
+            // Update dots on scroll
+            carouselContainer.addEventListener('scroll', () => {
+                const cardWidth = carouselContainer.clientWidth * 0.85;
+                const gap = 16;
+                const scrollDistance = cardWidth + gap;
+                const currentIndex = Math.round(carouselContainer.scrollLeft / scrollDistance);
+                dotsContainer.querySelectorAll('.carousel-dot').forEach((dot, index) => {
+                    dot.classList.toggle('active', index === currentIndex);
+                });
             });
-            feed.appendChild(showAllButton);
             
-            // Animate button in after cards finish
-            setTimeout(() => {
-                showAllButton.style.opacity = '1';
-                showAllButton.style.transform = 'translateY(0)';
-            }, 2800);
+            // Add swipe detection
+            let touchStartX = 0;
+            let touchEndX = 0;
             
-            // Scroll to the bottom after adding the cards
+            carouselContainer.addEventListener('touchstart', (e) => {
+                touchStartX = e.touches[0].clientX;
+            }, { passive: true });
+            
+            carouselContainer.addEventListener('touchend', (e) => {
+                touchEndX = e.changedTouches[0].clientX;
+                handleCarouselSwipe(carouselContainer, touchStartX, touchEndX);
+            }, { passive: true });
+            
+            // Add the carousel to the feed
+            feed.appendChild(carouselContainer);
+            feed.appendChild(dotsContainer);
+            
+            // Scroll to show the carousel properly so it's not cropped
             setTimeout(() => {
-                feed.scrollTop = feed.scrollHeight;
-            }, 100);
+                const carouselTop = carouselContainer.offsetTop;
+                const navbarHeight = 56; // Navbar height
+                feed.scrollTo({
+                    top: carouselTop - navbarHeight - 10, // Offset to show full card
+                    behavior: 'smooth'
+                });
+            }, 200);
             // Render countdowns immediately
             updateCountdownBadges();
             // Equalize image/body heights
-            attachImageLoadEqualizer(container);
-            equalizeCardSections();
+            setTimeout(() => {
+                attachImageLoadEqualizer(carouselContainer);
+                equalizeCardSections();
+            }, 100);
         }
 
         // Show the "Enrich" state for a specific artwork
