@@ -55,6 +55,13 @@
             scroll-snap-stop: always;
             position: relative;
             flex-shrink: 0;
+            display: flex;
+            align-items: stretch;
+        }
+        .carousel-item .card {
+            width: 100%;
+            height: 100%;
+            border-radius: 0 !important;
         }
         .carousel-dots {
             position: absolute;
@@ -1024,6 +1031,9 @@
                 const card = document.createElement('div');
                 card.id = cardId;
                 card.className = 'card position-relative';
+                card.style.width = '100%';
+                card.style.height = '100%';
+                card.style.margin = '0';
                 
                 let timingBadgeHTML = '';
                 if (item.deadlineMs) {
@@ -1035,16 +1045,16 @@
                     timingBadgeHTML = `<span class=\"badge glass-badge rounded-pill\">${item.time}</span>`;
                 }
                 card.innerHTML = `
-                    <div class="position-relative overflow-hidden rounded-15 h-100">
-                        <img src="${item.image}" class="position-absolute top-0 start-0 w-100 h-100 object-fit-cover" alt="${item.title}">
+                    <div class="position-relative w-100 h-100" style="width: 100%; height: 100%; border-radius: 0; overflow: hidden;">
+                        <img src="${item.image}" class="position-absolute top-0 start-0 w-100 h-100" style="object-fit: cover;" alt="${item.title}">
                         <div class="position-absolute top-0 start-0 w-100 h-100" style="background: linear-gradient(to right, rgba(0,0,0,0.65), rgba(0,0,0,0.35));"></div>
-                        <div class="position-absolute top-0 end-0 m-2 d-flex flex-column align-items-end gap-1">${timingBadgeHTML}</div>
+                        <div class="position-absolute top-0 end-0 m-2 d-flex flex-column align-items-end gap-1 z-1">${timingBadgeHTML}</div>
                         <div class="pin-container" data-artwork-id="${index}">
                             <i class="bi bi-geo-alt pin-icon"></i>
                             <span class="pin-label">I'm Here</span>
                         </div>
-                        <div class="card-body position-relative text-white d-flex flex-column justify-content-center h-100" style="padding-top: 30px; padding-bottom: 50px;">
-                            <h5 class="card-title mb-1 text-white">${item.title}</h5>
+                        <div class="position-absolute bottom-0 start-0 end-0 text-white d-flex flex-column justify-content-center" style="padding: 2rem; padding-bottom: 4rem;">
+                            <h5 class="mb-1 text-white" style="font-size: 1.5rem;">${item.title}</h5>
                             <div class="small text-white">${item.mediaType ? item.mediaType : 'Other'} • ${item.location ? item.location : ''}</div>
                         </div>
                     </div>
