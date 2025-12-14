@@ -32,6 +32,9 @@
             position: relative;
             overflow: hidden;
         }
+        .screen:has(.carousel-container) {
+            overflow: visible;
+        }
         .carousel-container {
             display: flex;
             width: 100%;
@@ -44,13 +47,18 @@
             scrollbar-width: none; /* Firefox */
             -ms-overflow-style: none; /* IE and Edge */
             touch-action: pan-x; /* Allow horizontal panning */
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
         }
         .carousel-container::-webkit-scrollbar {
             display: none; /* Chrome, Safari, Opera */
         }
         .carousel-item {
-            min-width: 100vw;
-            width: 100vw;
+            min-width: 100%;
+            width: 100%;
             height: 100%;
             scroll-snap-align: start;
             scroll-snap-stop: always;
@@ -1117,6 +1125,14 @@
                 updateCarouselDots(carouselContainer, currentIndex);
             });
             
+            // Ensure carousel container can scroll
+            carouselContainer.style.width = '100%';
+            carouselContainer.style.height = '100%';
+            carouselContainer.style.overflowX = 'scroll';
+            carouselContainer.style.overflowY = 'hidden';
+            carouselContainer.style.touchAction = 'pan-x';
+            carouselContainer.style.webkitOverflowScrolling = 'touch';
+            
             screen.appendChild(carouselContainer);
             screen.appendChild(dotsContainer);
             feed.appendChild(screen);
@@ -1132,7 +1148,12 @@
             // Force immediate scroll to show carousel right away
             feed.scrollTop = screenIndex * (window.innerHeight - 56);
             
-            // Carousel uses native touch scrolling, no need for custom swipe listeners
+            // Test: Log carousel scroll width
+            setTimeout(() => {
+                console.log('Carousel scrollWidth:', carouselContainer.scrollWidth);
+                console.log('Carousel clientWidth:', carouselContainer.clientWidth);
+                console.log('Carousel items:', carouselContainer.querySelectorAll('.carousel-item').length);
+            }, 100);
             
             // Render countdowns immediately
             updateCountdownBadges();
