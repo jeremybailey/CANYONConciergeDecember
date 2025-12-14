@@ -447,8 +447,8 @@
             if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minSwipeDistance) {
                 // Handle horizontal swipe on non-carousel screens if needed
             }
-            // Vertical swipe
-            else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > minSwipeDistance) {
+            // Vertical swipe - only if not on a carousel screen
+            else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > minSwipeDistance && !carousel) {
                 if (deltaY < 0) {
                     // Swipe up - show suggestions screen
                     showSuggestionsScreen();
@@ -1103,31 +1103,27 @@
                 updateCarouselDots(carouselContainer, currentIndex);
             });
             
-            // Attach swipe listeners to carousel
-            attachSwipeListeners(carouselContainer);
-            
             screen.appendChild(carouselContainer);
             screen.appendChild(dotsContainer);
             feed.appendChild(screen);
             
-            // Scroll to the new screen and activate it
-            setTimeout(() => {
-                const screens = document.querySelectorAll('.screen');
-                const screenIndex = Array.from(screens).indexOf(screen);
-                // Remove active from all screens
-                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-                // Add active to this screen
-                screen.classList.add('active');
-                feed.scrollTo({
-                    top: screenIndex * (window.innerHeight - 56),
-                    behavior: 'smooth'
-                });
-            }, 100);
+            // Scroll to the new screen and activate it immediately
+            const screens = document.querySelectorAll('.screen');
+            const screenIndex = Array.from(screens).indexOf(screen);
+            // Remove active from all screens
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            // Add active to this screen
+            screen.classList.add('active');
             
-            // Attach swipe listeners to carousel
-            if (typeof attachSwipeListeners === 'function') {
-                attachSwipeListeners(carouselContainer);
-            }
+            // Force immediate scroll to show carousel right away
+            feed.scrollTop = screenIndex * (window.innerHeight - 56);
+            
+            // Attach swipe listeners to carousel after it's in the DOM
+            setTimeout(() => {
+                if (typeof attachSwipeListeners === 'function') {
+                    attachSwipeListeners(carouselContainer);
+                }
+            }, 50);
             
             // Render countdowns immediately
             updateCountdownBadges();
