@@ -36,13 +36,14 @@
             display: flex;
             width: 100%;
             height: 100%;
-            overflow-x: auto;
+            overflow-x: scroll;
             overflow-y: hidden;
             scroll-snap-type: x mandatory;
             -webkit-overflow-scrolling: touch;
             scroll-behavior: smooth;
             scrollbar-width: none; /* Firefox */
             -ms-overflow-style: none; /* IE and Edge */
+            touch-action: pan-x; /* Allow horizontal panning */
         }
         .carousel-container::-webkit-scrollbar {
             display: none; /* Chrome, Safari, Opera */
@@ -528,15 +529,18 @@
             const feed = document.getElementById('feed');
             
             function attachSwipeListeners(element) {
-                element.addEventListener('touchstart', (e) => {
-                    touchStartX = e.touches[0].clientX;
-                    touchStartY = e.touches[0].clientY;
-                }, { passive: true });
-                element.addEventListener('touchend', (e) => {
-                    touchEndX = e.changedTouches[0].clientX;
-                    touchEndY = e.changedTouches[0].clientY;
-                    handleSwipe();
-                }, { passive: true });
+                // Only attach if it's not a carousel (carousels handle their own scrolling)
+                if (!element.classList.contains('carousel-container')) {
+                    element.addEventListener('touchstart', (e) => {
+                        touchStartX = e.touches[0].clientX;
+                        touchStartY = e.touches[0].clientY;
+                    }, { passive: true });
+                    element.addEventListener('touchend', (e) => {
+                        touchEndX = e.changedTouches[0].clientX;
+                        touchEndY = e.changedTouches[0].clientY;
+                        handleSwipe();
+                    }, { passive: true });
+                }
             }
             
             attachSwipeListeners(feed);
@@ -1128,12 +1132,7 @@
             // Force immediate scroll to show carousel right away
             feed.scrollTop = screenIndex * (window.innerHeight - 56);
             
-            // Attach swipe listeners to carousel after it's in the DOM
-            setTimeout(() => {
-                if (typeof attachSwipeListeners === 'function') {
-                    attachSwipeListeners(carouselContainer);
-                }
-            }, 50);
+            // Carousel uses native touch scrolling, no need for custom swipe listeners
             
             // Render countdowns immediately
             updateCountdownBadges();
