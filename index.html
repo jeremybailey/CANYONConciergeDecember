@@ -23,6 +23,7 @@
             -webkit-overflow-scrolling: touch;
             scroll-behavior: smooth;
             position: relative;
+            touch-action: pan-y; /* Allow vertical scrolling only on feed */
         }
         .screen {
             width: 100%;
@@ -1125,14 +1126,6 @@
                 updateCarouselDots(carouselContainer, currentIndex);
             });
             
-            // Ensure carousel container can scroll
-            carouselContainer.style.width = '100%';
-            carouselContainer.style.height = '100%';
-            carouselContainer.style.overflowX = 'scroll';
-            carouselContainer.style.overflowY = 'hidden';
-            carouselContainer.style.touchAction = 'pan-x';
-            carouselContainer.style.webkitOverflowScrolling = 'touch';
-            
             screen.appendChild(carouselContainer);
             screen.appendChild(dotsContainer);
             feed.appendChild(screen);
@@ -1148,11 +1141,29 @@
             // Force immediate scroll to show carousel right away
             feed.scrollTop = screenIndex * (window.innerHeight - 56);
             
-            // Test: Log carousel scroll width
+            // Ensure carousel can scroll - set explicit viewport widths
             setTimeout(() => {
-                console.log('Carousel scrollWidth:', carouselContainer.scrollWidth);
-                console.log('Carousel clientWidth:', carouselContainer.clientWidth);
-                console.log('Carousel items:', carouselContainer.querySelectorAll('.carousel-item').length);
+                const viewportWidth = window.innerWidth;
+                const items = carouselContainer.querySelectorAll('.carousel-item');
+                items.forEach((item) => {
+                    item.style.minWidth = viewportWidth + 'px';
+                    item.style.width = viewportWidth + 'px';
+                    item.style.flexShrink = '0';
+                });
+                
+                // Verify scrollability
+                console.log('Carousel setup:');
+                console.log('- scrollWidth:', carouselContainer.scrollWidth);
+                console.log('- clientWidth:', carouselContainer.clientWidth);
+                console.log('- Items:', items.length);
+                console.log('- Should scroll:', carouselContainer.scrollWidth > carouselContainer.clientWidth);
+                
+                // Test scroll programmatically
+                if (carouselContainer.scrollWidth > carouselContainer.clientWidth) {
+                    console.log('Carousel is scrollable!');
+                } else {
+                    console.error('Carousel is NOT scrollable - items may not be wide enough');
+                }
             }, 100);
             
             // Render countdowns immediately
