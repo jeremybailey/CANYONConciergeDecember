@@ -45,11 +45,22 @@ function Composer({
   const [showStaffSubmenu, setShowStaffSubmenu] = useState(false);
   const [showPosPicker, setShowPosPicker] = useState(false);
   const [showCheckInPicker, setShowCheckInPicker] = useState(false);
+  const [isMobile, setIsMobile] = useState(true); // Always use mobile UI for consistency
+  const [showBottomSheet, setShowBottomSheet] = useState(false);
+  const [showPeopleSheet, setShowPeopleSheet] = useState(false);
+  const [showCheckInSheet, setShowCheckInSheet] = useState(false);
+  const [showPosSheet, setShowPosSheet] = useState(false);
   const recipientMenuRef = useRef(null);
   const recipientSearchRef = useRef(null);
   const posPickerRef = useRef(null);
   const checkInPickerRef = useRef(null);
   const inputRef = useRef(null);
+  const pillsRef = useRef(null);
+  const promptBoxRef = useRef(null);
+  const bottomSheetRef = useRef(null);
+  const bottomSheetHandleRef = useRef(null);
+  const [sheetDragY, setSheetDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Get avatar color based on initials
   const getAvatarColor = (initials) => {
@@ -226,6 +237,150 @@ function Composer({
     }
   }, [toastMessage]);
 
+  // UI is consistent across all breakpoints - always use mobile UI (isMobile is always true)
+
+  // Set data attribute on body when bottom sheets are open (to hide more actions icons)
+  // Also prevent pull-to-refresh when sheets are open
+  useEffect(() => {
+    const hasBottomSheet = showBottomSheet || showPeopleSheet || showCheckInSheet || showPosSheet;
+    if (hasBottomSheet) {
+      document.body.setAttribute('data-bottom-sheet-open', 'true');
+      
+      // Prevent pull-to-refresh only when touching the backdrop or outside the sheet
+      const preventPullToRefresh = (e) => {
+        // Only prevent if:
+        // 1. We're at the top of the page (where pull-to-refresh triggers)
+        // 2. The touch is NOT on a bottom sheet element
+        const target = e.target;
+        const isOnSheet = target.closest('[data-bottom-sheet]') !== null;
+        
+        if ((window.scrollY === 0 || window.scrollY <= 10) && !isOnSheet) {
+          e.preventDefault();
+        }
+      };
+      
+      // Use capture phase but allow events to bubble to sheet elements
+      document.addEventListener('touchmove', preventPullToRefresh, { passive: false, capture: true });
+      
+      // Set CSS to prevent overscroll on body/html, but allow sheet content to scroll
+      document.body.style.overscrollBehaviorY = 'none';
+      document.documentElement.style.overscrollBehaviorY = 'none';
+      
+      return () => {
+        document.body.removeAttribute('data-bottom-sheet-open');
+        document.removeEventListener('touchmove', preventPullToRefresh, { capture: true });
+        document.body.style.overscrollBehaviorY = '';
+        document.documentElement.style.overscrollBehaviorY = '';
+      };
+    } else {
+      document.body.removeAttribute('data-bottom-sheet-open');
+      document.body.style.overscrollBehaviorY = '';
+      document.documentElement.style.overscrollBehaviorY = '';
+    }
+  }, [showBottomSheet, showPeopleSheet, showCheckInSheet, showPosSheet]);
+
+  // Handle mouse move and mouse up globally for drag functionality
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e) => {
+      if (isDragging && bottomSheetRef.current) {
+        e.preventDefault();
+        const currentY = e.clientY;
+        const deltaY = currentY - sheetDragY;
+        if (deltaY > 0) {
+          bottomSheetRef.current.style.transform = `translateX(-50%) translateY(${deltaY}px)`;
+        }
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (isDragging && bottomSheetRef.current) {
+        const currentTransform = bottomSheetRef.current.style.transform;
+        const translateY = parseInt(currentTransform.match(/translateY\((\d+)px\)/)?.[1] || '0');
+        if (translateY > 100) {
+          setShowBottomSheet(false);
+        }
+        bottomSheetRef.current.style.transform = 'translateX(-50%)';
+      }
+      setIsDragging(false);
+      setSheetDragY(0);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove, { passive: false });
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, sheetDragY]);
+
+  // Auto-add AI Concierge when user starts typing without any tool chips
+  useEffect(() => {
+    // Only auto-add if:
+    // 1. User has typed something (inputValue is not empty)
+    // 2. No recipients are selected
+    // 3. No primary action is active
+    // 4. No assign pill is active
+    // 5. No POS cart items
+    if (
+      inputValue.trim() &&
+      selectedRecipients.length === 0 &&
+      primaryAction === null &&
+      !hasAssignPill &&
+      posCart.length === 0
+    ) {
+      // Add AI Concierge
+      const aiConcierge = {
+        id: 'ai',
+        name: 'AI Concierge',
+        avatar: '🤖',
+        type: 'ai',
+        isSpecial: true
+      };
+      
+      // Only add if not already in the list
+      if (!selectedRecipients.some(r => r.id === 'ai')) {
+        setSelectedRecipients([aiConcierge]);
+      }
+    }
+  }, [inputValue, selectedRecipients, primaryAction, hasAssignPill, posCart]);
+
+  // Adjust prompt box padding-top based on pills height
+  useEffect(() => {
+    if (!promptBoxRef.current || !pillsRef.current) return;
+    
+    const hasPills = selectedRecipients.length > 0 || primaryAction !== null || hasAssignPill || posCart.length > 0;
+    if (!hasPills) {
+      if (promptBoxRef.current) {
+        promptBoxRef.current.style.paddingTop = '0.5rem';
+      }
+      return;
+    }
+
+    const updatePadding = () => {
+      if (pillsRef.current && promptBoxRef.current) {
+        const pillsHeight = pillsRef.current.scrollHeight;
+        // 0.75rem = 12px (matching left padding, assuming 16px base font size)
+        const topPadding = 12;
+        const bottomPadding = 8;
+        promptBoxRef.current.style.paddingTop = `${topPadding + pillsHeight + bottomPadding}px`;
+      }
+    };
+
+    // Update immediately
+    updatePadding();
+
+    // Use ResizeObserver to watch for pills height changes
+    const resizeObserver = new ResizeObserver(updatePadding);
+    resizeObserver.observe(pillsRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [selectedRecipients, primaryAction, hasAssignPill, posCart]);
+
   // Remove recipient from selected list
   const removeRecipient = (recipientId) => {
     setSelectedRecipients(prev => prev.filter(r => r.id !== recipientId));
@@ -304,7 +459,7 @@ function Composer({
           display: 'inline-flex',
           alignItems: 'center',
           gap: '0.375rem',
-          borderRadius: '0.375rem',
+          borderRadius: '20px',
           border: `1px solid ${borderColor}`,
           whiteSpace: 'nowrap',
           height: '24px',
@@ -365,7 +520,7 @@ function Composer({
           display: 'inline-flex',
           alignItems: 'center',
           gap: '0.375rem',
-          borderRadius: '0.375rem',
+          borderRadius: '20px',
           border: '1px solid rgba(255, 255, 255, 0.2)',
           whiteSpace: 'nowrap',
           height: '24px',
@@ -373,7 +528,7 @@ function Composer({
           flexShrink: 0
         }}
       >
-        <i className="bi bi-check-square" style={{ fontSize: '0.75rem' }}></i>
+        <i className="bi bi-check-square" style={{ fontSize: '0.75rem', fontWeight: 'bold' }}></i>
         <span style={{ fontWeight: '500' }}>Assign</span>
         <button
           type="button"
@@ -418,7 +573,7 @@ function Composer({
           display: 'inline-flex',
           alignItems: 'center',
           gap: '0.375rem',
-          borderRadius: '0.375rem',
+          borderRadius: '20px',
           border: '1px solid rgba(255, 193, 7, 0.6)',
           whiteSpace: 'nowrap',
           height: '24px',
@@ -426,7 +581,7 @@ function Composer({
           flexShrink: 0
         }}
       >
-        <i className="bi bi-cart" style={{ fontSize: '0.75rem' }}></i>
+        <i className="bi bi-cart" style={{ fontSize: '0.75rem', fontWeight: 'bold' }}></i>
         <span style={{ fontWeight: '500' }}>POS</span>
         <button
           type="button"
@@ -473,7 +628,7 @@ function Composer({
           display: 'inline-flex',
           alignItems: 'center',
           gap: '0.375rem',
-          borderRadius: '0.375rem',
+          borderRadius: '20px',
           border: '1px solid rgba(25, 135, 84, 0.6)',
           whiteSpace: 'nowrap',
           height: '24px',
@@ -481,7 +636,7 @@ function Composer({
           flexShrink: 0
         }}
       >
-        <i className="bi bi-person-check" style={{ fontSize: '0.75rem' }}></i>
+        <i className="bi bi-person-check" style={{ fontSize: '0.75rem', fontWeight: 'bold' }}></i>
         <span style={{ fontWeight: '500' }}>Check-in</span>
         <button
           type="button"
@@ -537,7 +692,7 @@ function Composer({
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.375rem',
-              borderRadius: '0.375rem',
+              borderRadius: '20px',
               border: '1px solid rgba(255, 193, 7, 0.4)',
               whiteSpace: 'nowrap',
               height: '24px',
@@ -586,7 +741,7 @@ function Composer({
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.375rem',
-              borderRadius: '0.375rem',
+              borderRadius: '20px',
               border: '1px solid rgba(255, 193, 7, 0.4)',
               whiteSpace: 'nowrap',
               height: '24px',
@@ -637,7 +792,7 @@ function Composer({
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.375rem',
-              borderRadius: '0.375rem',
+              borderRadius: '20px',
               border: '1px solid rgba(255, 193, 7, 0.5)',
               whiteSpace: 'nowrap',
               height: '24px',
@@ -697,33 +852,95 @@ function Composer({
     return (
       <div
         style={{
-          backgroundColor: '#2d2d2d',
-          border: '1px solid rgba(255, 255, 255, 0.2)',
-          borderRadius: '1rem',
-          padding: '0.5rem 0.75rem',
-          minHeight: '48px',
           display: 'flex',
-          flexDirection: 'column',
-          cursor: 'text',
-          position: 'relative'
-        }}
-        onClick={() => {
-          inputRef.current?.focus();
-          // Rule 2: Show chrome when user taps composer area
-          if (onInputFocus) {
-            onInputFocus();
-          }
+          alignItems: 'flex-end',
+          gap: '0.5rem'
         }}
       >
-        {/* Top section: Pills and input text */}
+        {/* + button outside and to the left */}
+        {showActionButtons && (
+          <button
+            type="button"
+            className="btn btn-link p-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowBottomSheet(true);
+            }}
+            data-plus-button
+            style={{
+              width: '45px',
+              height: '45px',
+              borderRadius: '50%',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              border: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#ffffff',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              flexShrink: 0
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            title="Add action"
+          >
+            <i className="bi bi-plus-lg" style={{ fontSize: '1.25rem', fontWeight: '900', textShadow: '0.5px 0.5px 0px currentColor' }}></i>
+          </button>
+        )}
         <div
+          ref={promptBoxRef}
           style={{
+            flex: 1,
+            backgroundColor: '#2d2d2d',
+            border: 'none',
+            borderRadius: '20px',
+            borderTopLeftRadius: '20px',
+            borderTopRightRadius: '20px',
+            borderBottomLeftRadius: '20px',
+            borderBottomRightRadius: '20px',
+            padding: '0.5rem 0.75rem',
+            paddingRight: '2.75rem', // Make room for send button
+            paddingTop: (selectedRecipients.length > 0 || primaryAction !== null || hasAssignPill || posCart.length > 0) ? 'calc(0.75rem + 24px + 0.5rem)' : '0.5rem', // Space for tools (will be adjusted dynamically)
+            paddingBottom: '0.5rem', // Ensure bottom padding for textarea
+            minHeight: '45px',
+            // Always maintain consistent height - don't change based on input state
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: (selectedRecipients.length > 0 || primaryAction !== null || hasAssignPill || posCart.length > 0 || inputValue.trim()) ? 'flex-end' : 'center', // Align to bottom when tools or text are present, center when empty
+            cursor: 'text',
+            position: 'relative',
+            overflow: 'visible' // Allow content to expand upward
+          }}
+          onClick={() => {
+            inputRef.current?.focus();
+            // Rule 2: Show chrome when user taps composer area
+            if (onInputFocus) {
+              onInputFocus();
+            }
+          }}
+        >
+        {/* Pills section: Positioned at top, pushes content down when present */}
+        {(selectedRecipients.length > 0 || primaryAction !== null || hasAssignPill || posCart.length > 0) && (
+        <div
+          ref={pillsRef}
+          style={{
+            position: 'absolute',
+            top: '0.75rem',
+            left: '0.75rem',
+            right: '2.75rem',
             display: 'flex',
             flexWrap: 'wrap',
             alignItems: 'flex-start',
             gap: '0.375rem',
             minHeight: '24px',
-            marginBottom: '0.5rem'
+            zIndex: 1
           }}
         >
           {/* Enforced pill ordering: [People (assignees + guests)] [Check-in (if any)] [POS (if any)] [POS variable pills...] [Assign (if any)] */}
@@ -747,7 +964,7 @@ function Composer({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.375rem',
-                borderRadius: '0.375rem',
+                borderRadius: '20px',
                 border: '1px solid rgba(255, 193, 7, 0.5)',
                 whiteSpace: 'nowrap',
                 height: '24px',
@@ -798,7 +1015,7 @@ function Composer({
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.375rem',
-                  borderRadius: '0.375rem',
+                  borderRadius: '20px',
                   border: '1px solid rgba(255, 193, 7, 0.6)',
                   whiteSpace: 'nowrap',
                   height: '24px',
@@ -823,7 +1040,7 @@ function Composer({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.375rem',
-                borderRadius: '0.375rem',
+                borderRadius: '20px',
                 border: '1px solid rgba(255, 193, 7, 0.5)',
                 whiteSpace: 'nowrap',
                 height: '24px',
@@ -863,73 +1080,120 @@ function Composer({
           )}
           {/* Wrapper pill: Assign (muted/outlined style) - comes after POS variable pills */}
           {renderAssignPill()}
-          {/* Input text field */}
-          <input
+        </div>
+        )}
+        
+        {/* Input text field section: Simplified when no tools */}
+        {selectedRecipients.length === 0 && primaryAction === null && !hasAssignPill && posCart.length === 0 ? (
+          <textarea
             ref={inputRef}
-            type="text"
             className="form-control bg-transparent text-white border-0 p-0"
-            placeholder={selectedRecipients.length === 0 ? placeholder : ''}
+            placeholder={placeholder}
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              // Auto-resize textarea when typing
+              if (e.target) {
+                e.target.style.height = 'auto';
+                const newHeight = Math.min(e.target.scrollHeight, 200);
+                e.target.style.height = `${newHeight}px`;
+              }
+            }}
             onFocus={() => {
-              // Rule 3: Keep chrome visible when input is focused
               if (onInputFocus) {
                 onInputFocus();
               }
             }}
             onKeyPress={(e) => {
-              if (e.key === 'Enter' && canSubmit) {
+              if (e.key === 'Enter' && !e.shiftKey && canSubmit) {
                 e.preventDefault();
                 handleSubmit();
               } else if (onKeyPress) {
                 onKeyPress(e);
               }
             }}
+            rows={1}
             style={{
               flex: 1,
-              minWidth: '120px',
+              width: '100%',
               border: 'none',
               outline: 'none',
               boxShadow: 'none',
-              fontSize: '0.875rem',
+              fontSize: '16px',
               background: 'transparent',
-              padding: '0.25rem 0',
-              alignSelf: 'flex-start'
+              padding: '0',
+              paddingTop: 'calc((45px - 1.5 * 16px) / 2)', // Always use consistent padding to match placeholder baseline
+              lineHeight: '1.5', // Always use consistent line-height
+              resize: 'none',
+              overflow: 'hidden',
+              maxHeight: '200px',
+              fontFamily: 'inherit',
+              margin: 0,
+              height: inputValue.trim() ? 'auto' : 'calc(1.5 * 16px)', // Use line-height when empty, auto when text
+              minHeight: 'calc(1.5 * 16px)', // Always maintain min height based on line-height
+              display: 'block',
+              boxSizing: 'border-box',
+              verticalAlign: 'top'
             }}
           />
-        </div>
+        ) : (
+          <textarea
+            ref={inputRef}
+            className="form-control bg-transparent text-white border-0 p-0"
+            placeholder={selectedRecipients.length === 0 ? placeholder : 'Add a message...'}
+            value={inputValue}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              if (e.target) {
+                // Reset height to auto to recalculate
+                e.target.style.height = 'auto';
+                // Set height based on scrollHeight, up to maxHeight
+                const newHeight = Math.min(e.target.scrollHeight, 200);
+                e.target.style.height = `${newHeight}px`;
+              }
+            }}
+            onFocus={() => {
+              if (onInputFocus) {
+                onInputFocus();
+              }
+            }}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && canSubmit) {
+                e.preventDefault();
+                handleSubmit();
+              } else if (onKeyPress) {
+                onKeyPress(e);
+              }
+            }}
+            rows={1}
+            style={{
+              flex: 1,
+              width: '100%',
+              border: 'none',
+              outline: 'none',
+              boxShadow: 'none',
+              fontSize: '16px',
+              background: 'transparent',
+              padding: '0',
+              paddingTop: 'calc((45px - 1.5 * 16px) / 2)', // Always use consistent padding to match placeholder baseline
+              lineHeight: '1.5', // Always use consistent line-height
+              resize: 'none',
+              overflow: 'hidden', // Hide overflow, textarea will expand via height
+              maxHeight: '200px', // Max height for expansion
+              fontFamily: 'inherit',
+              margin: 0,
+              height: inputValue.trim() ? 'auto' : 'calc(1.5 * 16px)', // Use line-height when empty, auto when text
+              minHeight: 'calc(1.5 * 16px)', // Always maintain min height based on line-height
+              display: 'block',
+              boxSizing: 'border-box',
+              verticalAlign: 'top',
+              alignSelf: 'flex-end' // Align to bottom to keep same position
+            }}
+          />
+        )}
         
-        {/* Bottom section: Icons and submit button (fixed at bottom) */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '0.5rem',
-            flexShrink: 0
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-            {showActionButtons && (
-              <>
-                {renderPeopleIcon()}
-                {renderCheckInIcon()}
-                {renderPosIcon()}
-                {renderTaskIcon()}
-              </>
-            )}
-          </div>
-          {/* Check-in requires exactly one guest */}
-          {checkInInvalid && (
-            <small style={{ 
-              color: 'rgba(255, 255, 255, 0.6)', 
-              fontSize: '0.75rem',
-              marginRight: '0.5rem'
-            }}>
-              Select a guest or scan a QR
-            </small>
-          )}
-          <button
+        {/* Submit button fixed position (like ChatGPT) */}
+        <button
             type="button"
             className="btn btn-link p-0"
             onClick={(e) => {
@@ -939,34 +1203,27 @@ function Composer({
             }}
             disabled={!canSubmit}
             style={{
+              position: 'absolute',
+              right: '0.5rem',
+              top: selectedRecipients.length === 0 && primaryAction === null && !hasAssignPill && posCart.length === 0 ? '50%' : 'auto',
+              bottom: selectedRecipients.length === 0 && primaryAction === null && !hasAssignPill && posCart.length === 0 ? 'auto' : '0.5rem',
+              transform: selectedRecipients.length === 0 && primaryAction === null && !hasAssignPill && posCart.length === 0 ? 'translateY(-50%)' : 'none',
               width: '32px',
               height: '32px',
               borderRadius: '50%',
-              backgroundColor: canSubmit ? 'rgba(13, 110, 253, 0.8)' : 'rgba(255, 255, 255, 0.1)',
+              backgroundColor: canSubmit ? '#ffffff' : 'rgba(255, 255, 255, 0.1)',
               border: 'none',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#ffffff',
+              color: canSubmit ? '#000000' : 'rgba(255, 255, 255, 0.5)',
               cursor: canSubmit ? 'pointer' : 'not-allowed',
-              transition: 'all 0.2s',
-              flexShrink: 0
-            }}
-            onMouseEnter={(e) => {
-              if (canSubmit) {
-                e.currentTarget.style.backgroundColor = 'rgba(13, 110, 253, 1)';
-                e.currentTarget.style.transform = 'scale(1.05)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (canSubmit) {
-                e.currentTarget.style.backgroundColor = 'rgba(13, 110, 253, 0.8)';
-                e.currentTarget.style.transform = 'scale(1)';
-              }
+              flexShrink: 0,
+              zIndex: 10
             }}
             title="Send"
           >
-            <i className="bi bi-arrow-up" style={{ fontSize: '0.875rem', fontWeight: 'bold' }}></i>
+            <i className="bi bi-arrow-up-short" style={{ fontSize: '1.125rem', fontWeight: 'bold', transform: 'scale(1.3)' }}></i>
           </button>
         </div>
       </div>
@@ -974,7 +1231,9 @@ function Composer({
   };
 
   // Render people icon (combines @ mention and QR scan)
+  // DISABLED: Desktop UI removed, using bottom sheets for all screen sizes
   const renderPeopleIcon = () => {
+    return null; // Desktop UI disabled - use bottom sheets instead
     // Always show (no mode restrictions) - pills are composable
     if (isThreadMode) return null;
     const filteredPeople = getFilteredPeople();
@@ -1012,7 +1271,7 @@ function Composer({
             e.currentTarget.style.backgroundColor = 'transparent';
           }}
         >
-          <i className="bi bi-people" style={{ fontSize: '1rem' }}></i>
+          <i className="bi bi-people" style={{ fontSize: '1rem', fontWeight: 'bold' }}></i>
         </button>
         {showRecipientMenu && (
           <div
@@ -1024,7 +1283,7 @@ function Composer({
               marginBottom: '0.25rem',
               backgroundColor: '#2d2d2d',
               border: '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: '0.375rem',
+              borderRadius: '20px',
               minWidth: '280px',
               maxWidth: '320px',
               maxHeight: '300px',
@@ -1120,7 +1379,8 @@ function Composer({
                             style={{ 
                               fontSize: '0.75rem', 
                               color: 'rgba(255, 255, 255, 0.6)',
-                              marginLeft: '0.25rem'
+                              marginLeft: '0.25rem',
+                              fontWeight: 'bold'
                             }}
                           ></i>
                         )}
@@ -1281,7 +1541,7 @@ function Composer({
                         }}
                       >
                         {isSelected && (
-                          <i className="bi bi-check" style={{ color: '#ffffff', fontSize: '0.75rem' }}></i>
+                          <i className="bi bi-check" style={{ color: '#ffffff', fontSize: '0.75rem', fontWeight: 'bold' }}></i>
                         )}
                       </div>
                     </div>
@@ -1471,24 +1731,44 @@ function Composer({
 
     const intentSummary = getIntentSummary();
 
+    // Get intent summary for display above prompt area
+    const getIntentSummaryText = () => {
+      // Check-in
+      if (primaryAction === 'check-in') {
+        const selectedGuest = selectedRecipients.find(r => r.type === 'guest');
+        const selectedStaff = selectedRecipients.find(r => r.type === 'staff' || r.type === 'ai');
+        const assignee = selectedStaff ? selectedStaff : { name: 'Jeremy Bailey', avatar: 'JB', type: 'staff' };
+        if (hasAssignPill) {
+          return `Assign → ${assignee.name} · Check-in ${selectedGuest ? selectedGuest.name : 'guest'}`;
+        }
+        return selectedGuest ? `Check-in ${selectedGuest.name}` : null;
+      }
+      // POS
+      if (primaryAction === 'pos') {
+        const selectedGuest = selectedRecipients.find(r => r.type === 'guest');
+        const selectedStaff = selectedRecipients.find(r => r.type === 'staff' || r.type === 'ai');
+        const assignee = selectedStaff ? selectedStaff : { name: 'Jeremy Bailey', avatar: 'JB', type: 'staff' };
+        const forGuest = selectedGuest ? selectedGuest : null;
+        if (hasAssignPill) {
+          return `Assign → ${assignee.name} · POS for ${forGuest ? forGuest.name : 'no guest'}`;
+        }
+        return `POS for ${forGuest ? forGuest.name : 'no guest'}`;
+      }
+      // Message (no primary action)
+      if (hasAssignPill) {
+        const selectedGuest = selectedRecipients.find(r => r.type === 'guest');
+        const selectedStaff = selectedRecipients.find(r => r.type === 'staff' || r.type === 'ai');
+        const assignee = selectedStaff ? selectedStaff : { name: 'Jeremy Bailey', avatar: 'JB', type: 'staff' };
+        const forGuest = selectedGuest ? selectedGuest : null;
+        return `Assign → ${assignee.name} · ${forGuest ? `for ${forGuest.name}` : 'task'}`;
+      }
+      return null;
+    };
+
+    const intentSummaryText = getIntentSummaryText();
+
     return (
-      <div style={{ flex: 1 }}>
-        {/* Intent summary: informational only, shows intent based on pill combination */}
-        {intentSummary && (
-          <div 
-            style={{
-              fontSize: '0.75rem',
-              color: 'rgba(255, 255, 255, 0.7)',
-              padding: '0.25rem 0.5rem',
-              marginBottom: '0.25rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.25rem'
-            }}
-          >
-            {intentSummary}
-          </div>
-        )}
+      <div style={{ flex: 1, position: 'relative' }}>
         {/* Toast message for action switching */}
         {toastMessage && (
           <div
@@ -1500,13 +1780,30 @@ function Composer({
               backgroundColor: 'rgba(0, 0, 0, 0.8)',
               color: '#ffffff',
               padding: '0.375rem 0.75rem',
-              borderRadius: '0.375rem',
+              borderRadius: '20px',
               fontSize: '0.75rem',
               zIndex: 1001,
               whiteSpace: 'nowrap'
             }}
           >
             {toastMessage}
+          </div>
+        )}
+        {/* Intent summary: informational only, shows intent based on pill combination - goes above prompt area, aligned with prompt box */}
+        {intentSummaryText && (
+          <div 
+            style={{
+              fontSize: '0.75rem',
+              color: 'rgba(255, 255, 255, 0.7)',
+              padding: '0.25rem 0',
+              paddingLeft: 'calc(45px + 0.5rem + 0.75rem)', // Account for + button and gap
+              marginBottom: '0.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem'
+            }}
+          >
+            {intentSummaryText}
           </div>
         )}
         {renderInputWithTags(
@@ -1828,7 +2125,9 @@ function Composer({
 
   // Render POS icon - toggles [POS] primary action pill and opens picker
   // Enforces mutual exclusivity: if Check-in is active, switch to POS
+  // DISABLED: Desktop UI removed, using bottom sheets for all screen sizes
   const renderPosIcon = () => {
+    return null; // Desktop UI disabled - use bottom sheets instead
     // Always show (no mode restrictions) - pills are composable
     if (isThreadMode) return null;
 
@@ -1879,7 +2178,7 @@ function Composer({
             e.currentTarget.style.backgroundColor = isPosActive ? 'rgba(255, 193, 7, 0.2)' : 'transparent';
           }}
         >
-          <i className="bi bi-cart" style={{ fontSize: '1rem' }}></i>
+          <i className="bi bi-cart" style={{ fontSize: '1rem', fontWeight: 'bold' }}></i>
         </button>
         
         {/* POS picker popover - lightweight selector, popover selects, pills reflect state */}
@@ -1893,7 +2192,7 @@ function Composer({
               marginBottom: '0.25rem',
               backgroundColor: '#2d2d2d',
               border: '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: '0.375rem',
+              borderRadius: '20px',
               minWidth: '260px',
               maxWidth: '280px',
               zIndex: 1002,
@@ -1998,7 +2297,9 @@ function Composer({
 
   // Render Assign icon - toggles [Assign] wrapper pill
   // Enforces mutual exclusivity: if Check-in is active, cancel it when Assign is activated
+  // DISABLED: Desktop UI removed, using bottom sheets for all screen sizes
   const renderTaskIcon = () => {
+    return null; // Desktop UI disabled - use bottom sheets instead
     // Always show (no mode restrictions) - pills are composable
     if (isThreadMode) return null;
 
@@ -2048,14 +2349,16 @@ function Composer({
           e.currentTarget.style.backgroundColor = hasAssignPill ? 'rgba(13, 110, 253, 0.2)' : 'transparent';
         }}
       >
-        <i className="bi bi-check-square" style={{ fontSize: '1rem' }}></i>
+        <i className="bi bi-check-square" style={{ fontSize: '1rem', fontWeight: 'bold' }}></i>
       </button>
     );
   };
 
   // Render Check-in icon - toggles [Check-in] primary action pill and opens picker
   // Enforces mutual exclusivity: if POS or Assign is active, switch to Check-in and clear them
+  // DISABLED: Desktop UI removed, using bottom sheets for all screen sizes
   const renderCheckInIcon = () => {
+    return null; // Desktop UI disabled - use bottom sheets instead
     // Always show (no mode restrictions) - pills are composable
     if (isThreadMode) return null;
 
@@ -2116,7 +2419,7 @@ function Composer({
             e.currentTarget.style.backgroundColor = isCheckInActive ? 'rgba(25, 135, 84, 0.2)' : 'transparent';
           }}
         >
-          <i className="bi bi-person-check" style={{ fontSize: '1rem' }}></i>
+          <i className="bi bi-person-check" style={{ fontSize: '1rem', fontWeight: 'bold' }}></i>
         </button>
         
         {/* Check-in picker popover - Scan QR / Manual */}
@@ -2130,7 +2433,7 @@ function Composer({
               marginBottom: '0.25rem',
               backgroundColor: '#2d2d2d',
               border: '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: '0.375rem',
+              borderRadius: '20px',
               minWidth: '200px',
               zIndex: 1002,
               boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
@@ -2152,14 +2455,17 @@ function Composer({
                   type: 'guest',
                   isSpecial: false
                 };
-                // Add scanned guest (allows multiple guests in check-in mode)
+                // QR scan replaces existing guests (authoritative identity resolver)
                 setSelectedRecipients(prev => {
-                  // Check if already selected
-                  if (prev.some(r => r.id === mockScannedGuest.id)) {
-                    return prev; // Already selected
+                  // Check if scanned guest matches an already-selected guest
+                  const existingGuest = prev.find(r => r.type === 'guest' && r.id === mockScannedGuest.id);
+                  if (existingGuest) {
+                    // Keep existing pill if it matches (no visual duplication)
+                    return prev;
                   }
-                  // Add new scanned guest
-                  return [...prev, mockScannedGuest];
+                  // Remove all existing guests and add the scanned guest
+                  const nonGuests = prev.filter(r => r.type !== 'guest');
+                  return [...nonGuests, mockScannedGuest];
                 });
                 setShowCheckInPicker(false);
               }}
@@ -2209,36 +2515,1208 @@ function Composer({
     );
   };
 
+  // Render POS bottom sheet
+  const renderPosSheet = () => {
+    if (!showPosSheet) return null;
+
+    const posItems = [
+      { id: 'ticket', name: 'Ticket', price: 25, emoji: '🎫' },
+      { id: 'wine', name: 'Wine', price: 12, emoji: '🍷' },
+      { id: 'beer', name: 'Beer', price: 8, emoji: '🍺' },
+      { id: 'cocktail', name: 'Cocktail', price: 15, emoji: '🍸' },
+      { id: 'soft-drink', name: 'Soft Drink', price: 5, emoji: '🥤' },
+      { id: 'gift-shop', name: 'Gift Shop Item', price: 20, emoji: '🛍️' }
+    ];
+
+    // Calculate total item count for CTA
+    const totalItemCount = posCart.reduce((sum, item) => sum + item.quantity, 0);
+    const ctaText = totalItemCount > 0 ? `Add ${totalItemCount} ${totalItemCount === 1 ? 'item' : 'items'}` : null;
+
+    return (
+      <>
+        {/* Backdrop */}
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 99999,
+            animation: 'fadeIn 0.2s ease-out',
+            pointerEvents: 'auto'
+          }}
+          onClick={() => {
+            setShowPosSheet(false);
+            setShowBottomSheet(false);
+          }}
+        />
+        {/* POS bottom sheet */}
+        <div
+          data-bottom-sheet
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '100%',
+            maxWidth: '600px',
+            backgroundColor: '#2d2d2d',
+            borderTopLeftRadius: '1rem',
+            borderTopRightRadius: '1rem',
+            padding: '1rem',
+            paddingBottom: ctaText ? 'calc(5.5rem + env(safe-area-inset-bottom, 0))' : 'calc(1rem + env(safe-area-inset-bottom, 0))', // Extra padding when CTA is visible
+            zIndex: 100000,
+            pointerEvents: 'auto',
+            boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.3)',
+            animation: 'slideUp 0.3s ease-out',
+            maxHeight: '80vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header with close button */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h6 style={{ margin: 0, color: '#ffffff', fontWeight: '600' }}>Add Items</h6>
+            <button
+              type="button"
+              className="btn btn-link p-0"
+              onClick={() => {
+                setShowPosSheet(false);
+                setShowBottomSheet(true); // Show tools sheet when closing POS sheet
+              }}
+              style={{
+                color: 'rgba(255, 255, 255, 0.7)',
+                fontSize: '1.25rem',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <i className="bi bi-x-lg"></i>
+            </button>
+          </div>
+
+          {/* Items list - scrollable */}
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, marginBottom: (ctaText || (primaryAction === 'pos' && posCart.length > 0)) ? '1rem' : '0' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {posItems.map(item => {
+              const existingItem = posCart.find(i => i.id === item.id);
+              const currentQuantity = existingItem ? existingItem.quantity : 0;
+              
+              return (
+                <button
+                  key={item.id}
+                  className="btn w-100"
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '0.75rem',
+                    backgroundColor: currentQuantity > 0 ? 'rgba(255, 193, 7, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                    border: currentQuantity > 0 ? '1px solid rgba(255, 193, 7, 0.5)' : '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '0.5rem',
+                    color: '#ffffff',
+                    textAlign: 'left'
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Activate POS pill if not already active
+                    if (primaryAction !== 'pos') {
+                      if (primaryAction === 'check-in' || hasAssignPill) {
+                        if (primaryAction === 'check-in') {
+                          setShowCheckInPicker(false);
+                        }
+                        setHasAssignPill(false);
+                        setPrimaryAction('pos');
+                        setToastMessage('Switched to POS');
+                      } else {
+                        setPrimaryAction('pos');
+                      }
+                    }
+                    // Add or increment item
+                    setPosCart(prev => {
+                      const existing = prev.find(i => i.id === item.id);
+                      if (existing) {
+                        return prev.map(i => 
+                          i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
+                        );
+                      }
+                      return [...prev, { ...item, quantity: 1 }];
+                    });
+                  }}
+                  onTouchStart={(e) => {
+                    e.currentTarget.style.backgroundColor = currentQuantity > 0 ? 'rgba(255, 193, 7, 0.3)' : 'rgba(255, 255, 255, 0.15)';
+                  }}
+                  onTouchEnd={(e) => {
+                    setTimeout(() => {
+                      e.currentTarget.style.backgroundColor = currentQuantity > 0 ? 'rgba(255, 193, 7, 0.2)' : 'rgba(255, 255, 255, 0.05)';
+                    }, 150);
+                  }}
+                  onTouchCancel={(e) => {
+                    e.currentTarget.style.backgroundColor = currentQuantity > 0 ? 'rgba(255, 193, 7, 0.2)' : 'rgba(255, 255, 255, 0.05)';
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    {item.emoji && <span style={{ fontSize: '1.25rem' }}>{item.emoji}</span>}
+                    <span style={{ fontWeight: '500' }}>{item.name}</span>
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    {currentQuantity > 0 && (
+                      <span style={{ 
+                        color: 'rgba(255, 193, 7, 0.9)', 
+                        fontSize: '0.875rem',
+                        fontWeight: '600'
+                      }}>
+                        ×{currentQuantity}
+                      </span>
+                    )}
+                    <span style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.875rem' }}>${item.price}</span>
+                  </div>
+                </button>
+              );
+            })}
+            </div>
+          </div>
+
+          {/* Payment method selector - outside scrollable area, above CTA */}
+          {primaryAction === 'pos' && posCart.length > 0 && (
+            <div style={{ 
+              paddingTop: '1rem', 
+              marginTop: 'auto',
+              marginBottom: ctaText ? '1rem' : '0',
+              borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+              flexShrink: 0
+            }}>
+              <div style={{ fontSize: '0.875rem', color: 'rgba(255, 255, 255, 0.8)', marginBottom: '0.75rem', fontWeight: '500' }}>
+                Payment
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {['cash', 'card', 'card-on-file'].map(method => (
+                  <button
+                    key={method}
+                    className={`btn flex-grow-1 ${paymentMethod === method ? 'btn-primary' : 'btn-outline-secondary'}`}
+                    style={{ fontSize: '0.875rem', padding: '0.5rem' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPaymentMethod(method);
+                    }}
+                  >
+                    {method === 'cash' ? 'Cash' : method === 'card' ? 'Card' : 'Card on File'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* CTA Button - only show when items are in cart, fixed at bottom */}
+          {ctaText && (
+            <div style={{ 
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              padding: '1rem',
+              paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0))',
+              borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+              backgroundColor: '#2d2d2d',
+              zIndex: 10
+            }}>
+              <button
+                className="btn btn-primary w-100"
+                style={{
+                  padding: '0.875rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  borderRadius: '0.5rem'
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Activate POS pill if not already active
+                  if (primaryAction !== 'pos') {
+                    if (primaryAction === 'check-in' || hasAssignPill) {
+                      if (primaryAction === 'check-in') {
+                        setShowCheckInPicker(false);
+                      }
+                      setHasAssignPill(false);
+                      setPrimaryAction('pos');
+                      setToastMessage('Switched to POS');
+                    } else {
+                      setPrimaryAction('pos');
+                    }
+                  }
+                  // Close the sheet
+                  setShowPosSheet(false);
+                  setShowBottomSheet(false);
+                }}
+                onTouchStart={(e) => {
+                  e.currentTarget.style.opacity = '0.8';
+                  e.currentTarget.style.transform = 'scale(0.98)';
+                }}
+                onTouchEnd={(e) => {
+                  setTimeout(() => {
+                    e.currentTarget.style.opacity = '1';
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }, 150);
+                }}
+                onTouchCancel={(e) => {
+                  e.currentTarget.style.opacity = '1';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+              >
+                {ctaText}
+              </button>
+            </div>
+          )}
+        </div>
+      </>
+    );
+  };
+
+  // Render Check-in bottom sheet
+  const renderCheckInSheet = () => {
+    if (!showCheckInSheet) return null;
+
+    return (
+      <>
+        {/* Backdrop */}
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 99999,
+            animation: 'fadeIn 0.2s ease-out',
+            pointerEvents: 'auto'
+          }}
+          onClick={() => {
+            setShowCheckInSheet(false);
+            setShowBottomSheet(false);
+          }}
+        />
+        {/* Check-in bottom sheet */}
+        <div
+          data-bottom-sheet
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '100%',
+            maxWidth: '600px',
+            backgroundColor: '#2d2d2d',
+            borderTopLeftRadius: '1rem',
+            borderTopRightRadius: '1rem',
+            padding: '1rem',
+            paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0))',
+            zIndex: 100000,
+            pointerEvents: 'auto',
+            boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.3)',
+            animation: 'slideUp 0.3s ease-out',
+            maxHeight: '80vh',
+            overflowY: 'auto'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header with close button */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h6 style={{ margin: 0, color: '#ffffff', fontWeight: '600' }}>Check-in Guest</h6>
+            <button
+              type="button"
+              className="btn btn-link p-0"
+              onClick={() => {
+                setShowCheckInSheet(false);
+                setShowBottomSheet(true); // Show tools sheet when closing Check-in sheet
+              }}
+              style={{
+                color: 'rgba(255, 255, 255, 0.7)',
+                fontSize: '1.25rem',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <i className="bi bi-x-lg"></i>
+            </button>
+          </div>
+
+          {/* Options */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {/* Scan QR option */}
+            <button
+              type="button"
+              className="btn btn-primary w-100"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.75rem',
+                padding: '1rem',
+                fontSize: '1rem',
+                fontWeight: '500'
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                // Activate Check-in pill if not already active
+                if (primaryAction !== 'check-in') {
+                  if (hasAssignPill || primaryAction === 'pos') {
+                    setHasAssignPill(false);
+                    if (primaryAction === 'pos') {
+                      setPosCart([]);
+                      setPaymentMethod(null);
+                      setShowPosPicker(false);
+                    }
+                    setPrimaryAction('check-in');
+                    setToastMessage('Switched to Check-in');
+                  } else {
+                    setPrimaryAction('check-in');
+                  }
+                }
+                // Simulate QR scan result
+                const mockScannedGuest = {
+                  id: `scanned-${Date.now()}`,
+                  name: 'Scanned Guest',
+                  avatar: 'SG',
+                  type: 'guest',
+                  isSpecial: false
+                };
+                // QR scan replaces existing guests (authoritative identity resolver)
+                setSelectedRecipients(prev => {
+                  // Check if scanned guest matches an already-selected guest
+                  const existingGuest = prev.find(r => r.type === 'guest' && r.id === mockScannedGuest.id);
+                  if (existingGuest) {
+                    // Keep existing pill if it matches (no visual duplication)
+                    return prev;
+                  }
+                  // Remove all existing guests and add the scanned guest
+                  const nonGuests = prev.filter(r => r.type !== 'guest');
+                  return [...nonGuests, mockScannedGuest];
+                });
+                setShowCheckInSheet(false);
+                setShowBottomSheet(false);
+              }}
+              onTouchStart={(e) => {
+                e.currentTarget.style.opacity = '0.8';
+                e.currentTarget.style.transform = 'scale(0.98)';
+              }}
+              onTouchEnd={(e) => {
+                setTimeout(() => {
+                  e.currentTarget.style.opacity = '1';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }, 150);
+              }}
+              onTouchCancel={(e) => {
+                e.currentTarget.style.opacity = '1';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              <i className="bi bi-qr-code-scan" style={{ fontSize: '1.25rem' }}></i>
+              <span>Scan QR</span>
+            </button>
+            
+            {/* Manual entry option */}
+            <button
+              type="button"
+              className="btn btn-outline-secondary w-100"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.75rem',
+                padding: '1rem',
+                fontSize: '1rem',
+                fontWeight: '500'
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                // Activate Check-in pill
+                if (primaryAction !== 'check-in') {
+                  if (hasAssignPill || primaryAction === 'pos') {
+                    setHasAssignPill(false);
+                    if (primaryAction === 'pos') {
+                      setPosCart([]);
+                      setPaymentMethod(null);
+                      setShowPosPicker(false);
+                    }
+                    setPrimaryAction('check-in');
+                    setToastMessage('Switched to Check-in');
+                  } else {
+                    setPrimaryAction('check-in');
+                  }
+                }
+                setShowCheckInSheet(false);
+                setShowBottomSheet(false);
+              }}
+              onTouchStart={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+              }}
+              onTouchEnd={(e) => {
+                setTimeout(() => {
+                  e.currentTarget.style.backgroundColor = '';
+                }, 150);
+              }}
+              onTouchCancel={(e) => {
+                e.currentTarget.style.backgroundColor = '';
+              }}
+            >
+              <i className="bi bi-keyboard" style={{ fontSize: '1.25rem' }}></i>
+              <span>Manual</span>
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  };
+
+  // Render People bottom sheet
+  const renderPeopleSheet = () => {
+    if (!showPeopleSheet) return null;
+
+    const filteredPeople = getFilteredPeople();
+    const specialPeople = filteredPeople.filter(p => p.isSpecial);
+    const regularPeople = filteredPeople.filter(p => !p.isSpecial && p.type === 'guest');
+    
+    // Count selected people by type for CTA
+    const selectedInMenu = selectedRecipients.filter(r => {
+      const person = filteredPeople.find(p => p.id === r.id);
+      return person !== undefined;
+    });
+    const guestCount = selectedInMenu.filter(r => r.type === 'guest').length;
+    const staffCount = selectedInMenu.filter(r => r.type === 'staff').length;
+    const aiCount = selectedInMenu.filter(r => r.type === 'ai').length;
+    
+    // Build CTA text
+    const getCTAText = () => {
+      const parts = [];
+      if (guestCount > 0) {
+        parts.push(`${guestCount} ${guestCount === 1 ? 'guest' : 'guests'}`);
+      }
+      if (staffCount > 0) {
+        parts.push(`${staffCount} ${staffCount === 1 ? 'staff' : 'staff'}`);
+      }
+      if (aiCount > 0) {
+        parts.push(`${aiCount} ${aiCount === 1 ? 'AI' : 'AI'}`);
+      }
+      if (parts.length === 0) return null;
+      if (parts.length === 1) return `Add ${parts[0]}`;
+      if (parts.length === 2) return `Add ${parts[0]} and ${parts[1]}`;
+      return `Add ${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+    };
+    
+    const ctaText = getCTAText();
+
+    return (
+      <>
+        {/* Backdrop */}
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 99999,
+            animation: 'fadeIn 0.2s ease-out',
+            pointerEvents: 'auto'
+          }}
+          onClick={() => {
+            setShowPeopleSheet(false);
+            setShowBottomSheet(false);
+          }}
+        />
+        {/* People bottom sheet */}
+        <div
+          data-bottom-sheet
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '100%',
+            maxWidth: '600px',
+            backgroundColor: '#2d2d2d',
+            borderTopLeftRadius: '1rem',
+            borderTopRightRadius: '1rem',
+            padding: '1rem',
+            paddingBottom: ctaText ? 'calc(5.5rem + env(safe-area-inset-bottom, 0))' : 'calc(1rem + env(safe-area-inset-bottom, 0))', // Extra padding when CTA is visible
+            zIndex: 100000,
+            pointerEvents: 'auto',
+            boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.3)',
+            animation: 'slideUp 0.3s ease-out',
+            maxHeight: '80vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header with close button */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h6 style={{ margin: 0, color: '#ffffff', fontWeight: '600' }}>Select People</h6>
+            <button
+              type="button"
+              className="btn btn-link p-0"
+              onClick={() => {
+                setShowPeopleSheet(false);
+                setShowBottomSheet(true); // Show tools sheet when closing People sheet
+              }}
+              style={{
+                color: 'rgba(255, 255, 255, 0.7)',
+                fontSize: '1.25rem',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <i className="bi bi-x-lg"></i>
+            </button>
+          </div>
+
+          {/* Search input */}
+          <div style={{ marginBottom: '1rem' }}>
+            <input
+              ref={recipientSearchRef}
+              type="text"
+              className="form-control bg-dark text-white border-secondary"
+              placeholder="Search people..."
+              value={recipientSearch}
+              onChange={(e) => setRecipientSearch(e.target.value)}
+              style={{ fontSize: '0.875rem' }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+
+          {/* People list */}
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, marginBottom: ctaText ? '1rem' : '0' }}>
+            {/* Special people (AI, Staff) */}
+            {specialPeople.length > 0 && (
+              <div style={{ marginBottom: '1rem' }}>
+                {specialPeople.map(person => {
+                  const isStaff = person.id === 'staff';
+                  const staffList = isStaff ? getStaffList() : [];
+                  const isSelected = selectedRecipients.some(r => r.id === person.id);
+                  
+                  return (
+                    <div key={person.id} style={{ marginBottom: '0.5rem' }}>
+                      <button
+                        className="btn w-100"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.75rem',
+                          padding: '0.75rem',
+                          backgroundColor: isSelected ? 'rgba(13, 110, 253, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                          border: isSelected ? '1px solid rgba(13, 110, 253, 0.5)' : '1px solid rgba(255, 255, 255, 0.1)',
+                          borderRadius: '0.5rem',
+                          color: '#ffffff',
+                          textAlign: 'left',
+                          width: '100%'
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isStaff && staffList.length > 0) {
+                            setShowStaffSubmenu(!showStaffSubmenu);
+                          } else {
+                            toggleRecipientSelection(person);
+                          }
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                          }
+                        }}
+                        onTouchStart={(e) => {
+                          e.currentTarget.style.backgroundColor = isSelected ? 'rgba(13, 110, 253, 0.3)' : 'rgba(255, 255, 255, 0.15)';
+                        }}
+                        onTouchEnd={(e) => {
+                          setTimeout(() => {
+                            e.currentTarget.style.backgroundColor = isSelected ? 'rgba(13, 110, 253, 0.2)' : 'rgba(255, 255, 255, 0.05)';
+                          }, 150);
+                        }}
+                        onTouchCancel={(e) => {
+                          e.currentTarget.style.backgroundColor = isSelected ? 'rgba(13, 110, 253, 0.2)' : 'rgba(255, 255, 255, 0.05)';
+                        }}
+                      >
+                        <div 
+                          style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '50%',
+                            backgroundColor: person.type === 'ai' ? '#3B31FF' : getAvatarColor(person.avatar || person.name),
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.875rem',
+                            fontWeight: '500',
+                            color: '#ffffff',
+                            flexShrink: 0
+                          }}
+                        >
+                          {person.avatar}
+                        </div>
+                        <span style={{ flex: 1, fontWeight: '500', fontSize: '0.875rem' }}>{person.name}</span>
+                        {isStaff && staffList.length > 0 && (
+                          <i 
+                            className={`bi bi-chevron-${showStaffSubmenu ? 'up' : 'down'}`}
+                            style={{ fontSize: '1rem', color: 'rgba(255, 255, 255, 0.8)', flexShrink: 0, fontWeight: 'bold' }}
+                          ></i>
+                        )}
+                        {!isStaff && isSelected && (
+                          <i className="bi bi-check-circle-fill" style={{ color: '#0d6efd', fontSize: '1.25rem', flexShrink: 0, fontWeight: 'bold' }}></i>
+                        )}
+                      </button>
+                      
+                      {/* Staff submenu */}
+                      {isStaff && showStaffSubmenu && staffList.length > 0 && (
+                        <div style={{ marginTop: '0.5rem', marginLeft: '0.75rem', paddingLeft: '0.75rem', borderLeft: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                          {staffList.map(staffMember => {
+                            const isStaffSelected = selectedRecipients.some(r => r.id === staffMember.id);
+                            return (
+                              <button
+                                key={staffMember.id}
+                                className="btn w-100"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.75rem',
+                                  padding: '0.625rem',
+                                  backgroundColor: isStaffSelected ? 'rgba(13, 110, 253, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                                  border: isStaffSelected ? '1px solid rgba(13, 110, 253, 0.5)' : '1px solid rgba(255, 255, 255, 0.1)',
+                                  borderRadius: '0.5rem',
+                                  color: '#ffffff',
+                                  textAlign: 'left',
+                                  width: '100%',
+                                  marginBottom: '0.5rem'
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleRecipientSelection(staffMember);
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!isStaffSelected) {
+                                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isStaffSelected) {
+                                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                                  }
+                                }}
+                                onTouchStart={(e) => {
+                                  e.currentTarget.style.backgroundColor = isStaffSelected ? 'rgba(13, 110, 253, 0.3)' : 'rgba(255, 255, 255, 0.15)';
+                                }}
+                                onTouchEnd={(e) => {
+                                  setTimeout(() => {
+                                    e.currentTarget.style.backgroundColor = isStaffSelected ? 'rgba(13, 110, 253, 0.2)' : 'rgba(255, 255, 255, 0.05)';
+                                  }, 150);
+                                }}
+                                onTouchCancel={(e) => {
+                                  e.currentTarget.style.backgroundColor = isStaffSelected ? 'rgba(13, 110, 253, 0.2)' : 'rgba(255, 255, 255, 0.05)';
+                                }}
+                              >
+                                <div 
+                                  style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    backgroundColor: getAvatarColor(staffMember.avatar || staffMember.name),
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '500',
+                                    color: '#ffffff',
+                                    flexShrink: 0
+                                  }}
+                                >
+                                  {staffMember.avatar}
+                                </div>
+                                <span style={{ flex: 1, fontSize: '0.875rem' }}>{staffMember.name}</span>
+                                {isStaffSelected && (
+                                  <i className="bi bi-check-circle-fill" style={{ color: '#0d6efd', fontSize: '1.25rem', flexShrink: 0, fontWeight: 'bold' }}></i>
+                                )}
+                                {!isStaffSelected && (
+                                  <div style={{ width: '1.25rem', flexShrink: 0 }}></div>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Regular people (guests) */}
+            {regularPeople.length > 0 && (
+              <div>
+                {regularPeople.map(person => {
+                  const isSelected = selectedRecipients.some(r => r.id === person.id);
+                  return (
+                    <button
+                      key={person.id}
+                      className="btn w-100"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                        padding: '0.75rem',
+                        backgroundColor: isSelected ? 'rgba(13, 110, 253, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                        border: isSelected ? '1px solid rgba(13, 110, 253, 0.5)' : '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '0.5rem',
+                        color: '#ffffff',
+                        textAlign: 'left',
+                        width: '100%',
+                        marginBottom: '0.5rem'
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleRecipientSelection(person);
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) {
+                          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSelected) {
+                          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                        }
+                      }}
+                    >
+                      <div 
+                        style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '50%',
+                          backgroundColor: getAvatarColor(person.avatar || person.name),
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '0.875rem',
+                          fontWeight: '500',
+                          color: '#ffffff',
+                          flexShrink: 0
+                        }}
+                      >
+                        {person.avatar || (person.name ? person.name.charAt(0) : '?')}
+                      </div>
+                      <span style={{ flex: 1, fontWeight: '500', fontSize: '0.875rem' }}>{person.name}</span>
+                      {isSelected && (
+                        <i className="bi bi-check-circle-fill" style={{ color: '#0d6efd', fontSize: '1.25rem', flexShrink: 0 }}></i>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {filteredPeople.length === 0 && (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.875rem' }}>
+                No people found
+              </div>
+            )}
+          </div>
+          
+          {/* CTA Button - only show when people are selected, fixed at bottom */}
+          {ctaText && (
+            <div style={{ 
+              position: 'absolute',
+              bottom: 'env(safe-area-inset-bottom, 0)',
+              left: '1rem',
+              right: '1rem',
+              paddingTop: '1rem', 
+              borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+              backgroundColor: '#2d2d2d',
+              paddingBottom: '1rem'
+            }}>
+              <button
+                className="btn btn-primary w-100"
+                style={{
+                  padding: '0.875rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  borderRadius: '0.5rem'
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Selected people are already in selectedRecipients, just close the sheet
+                  setShowPeopleSheet(false);
+                  setShowBottomSheet(false);
+                }}
+                onTouchStart={(e) => {
+                  e.currentTarget.style.opacity = '0.8';
+                  e.currentTarget.style.transform = 'scale(0.98)';
+                }}
+                onTouchEnd={(e) => {
+                  setTimeout(() => {
+                    e.currentTarget.style.opacity = '1';
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }, 150);
+                }}
+                onTouchCancel={(e) => {
+                  e.currentTarget.style.opacity = '1';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+              >
+                {ctaText}
+              </button>
+            </div>
+          )}
+        </div>
+      </>
+    );
+  };
+
+  // Render bottom sheet menu
+  const renderBottomSheet = () => {
+    if (!showBottomSheet) return null;
+
+    const tools = [
+      {
+        id: 'people',
+        label: 'People',
+        icon: 'bi-people',
+        description: 'Select guests, staff, or AI',
+        onClick: () => {
+          // Open People bottom sheet
+          setShowBottomSheet(false);
+          setShowPeopleSheet(true);
+        }
+      },
+      {
+        id: 'check-in',
+        label: 'Check-in',
+        icon: 'bi-person-check',
+        description: 'Check in guests',
+        onClick: () => {
+          // Open Check-in bottom sheet
+          setShowBottomSheet(false);
+          setShowCheckInSheet(true);
+        }
+      },
+      {
+        id: 'pos',
+        label: 'POS',
+        icon: 'bi-cash-stack',
+        description: 'Add items to cart',
+        onClick: () => {
+          // Open POS bottom sheet
+          setShowBottomSheet(false);
+          setShowPosSheet(true);
+        }
+      },
+      {
+        id: 'assign',
+        label: 'Assign',
+        icon: 'bi-check-square',
+        description: 'Create a task',
+        onClick: () => {
+          // Toggle Assign pill - mutually exclusive with Check-in and POS
+          if (!hasAssignPill) {
+            if (primaryAction === 'check-in' || primaryAction === 'pos') {
+              setPrimaryAction(null);
+              if (primaryAction === 'pos') {
+                setPosCart([]);
+                setPaymentMethod(null);
+                setShowPosPicker(false);
+              }
+              if (primaryAction === 'check-in') {
+                setShowCheckInPicker(false);
+              }
+              setHasAssignPill(true);
+              setToastMessage('Switched to Assign');
+            } else {
+              setHasAssignPill(true);
+            }
+          } else {
+            setHasAssignPill(false);
+          }
+          setShowBottomSheet(false);
+        }
+      }
+    ];
+
+    return (
+      <>
+        {/* Backdrop */}
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 99999,
+            animation: 'fadeIn 0.2s ease-out',
+            pointerEvents: 'auto'
+          }}
+          onClick={() => {
+            setShowBottomSheet(false);
+            setShowPeopleSheet(false);
+            setShowCheckInSheet(false);
+          }}
+        />
+        {/* Bottom sheet - entire sheet is draggable */}
+        <div
+          ref={bottomSheetRef}
+          data-bottom-sheet
+          onTouchStart={(e) => {
+            // Allow dragging from anywhere on the sheet, but prevent on interactive elements
+            const target = e.target;
+            if (target.tagName === 'BUTTON' || target.closest('button') || target.tagName === 'INPUT' || target.closest('input')) {
+              // Don't start drag on buttons or inputs - allow normal interaction
+              return;
+            }
+            // Only prevent default if we're actually starting a drag, not on interactive elements
+            e.stopPropagation();
+            setIsDragging(true);
+            setSheetDragY(e.touches[0].clientY);
+          }}
+          onTouchMove={(e) => {
+            if (isDragging && bottomSheetRef.current) {
+              e.preventDefault(); // Prevent pull-to-refresh and scrolling
+              e.stopPropagation();
+              const currentY = e.touches[0].clientY;
+              const deltaY = currentY - sheetDragY;
+              if (deltaY > 0) {
+                bottomSheetRef.current.style.transform = `translateX(-50%) translateY(${deltaY}px)`;
+              }
+            } else if (bottomSheetRef.current) {
+              // Even if not dragging, prevent pull-to-refresh when touching the sheet
+              if (window.scrollY === 0) {
+                e.preventDefault();
+              }
+            }
+          }}
+          onTouchEnd={(e) => {
+            if (isDragging && bottomSheetRef.current) {
+              e.preventDefault(); // Prevent any default behavior
+              e.stopPropagation();
+              const currentTransform = bottomSheetRef.current.style.transform;
+              const translateY = parseInt(currentTransform.match(/translateY\((\d+)px\)/)?.[1] || '0');
+              if (translateY > 100) {
+                setShowBottomSheet(false);
+              }
+              bottomSheetRef.current.style.transform = 'translateX(-50%)';
+              bottomSheetRef.current.style.touchAction = '';
+            }
+            setIsDragging(false);
+            setSheetDragY(0);
+          }}
+          onMouseDown={(e) => {
+            // Allow dragging from anywhere on the sheet, but prevent on interactive elements
+            const target = e.target;
+            if (target.tagName === 'BUTTON' || target.closest('button')) {
+              return; // Don't start drag on buttons
+            }
+            e.stopPropagation();
+            setIsDragging(true);
+            setSheetDragY(e.clientY);
+          }}
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '100%',
+            maxWidth: '600px',
+            backgroundColor: '#2d2d2d',
+            borderTopLeftRadius: '1rem',
+            borderTopRightRadius: '1rem',
+            padding: '1.5rem 1rem',
+            paddingTop: '0.75rem', // Reduced top padding to move handle up
+            paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0))',
+            zIndex: 100000,
+            pointerEvents: 'auto',
+            boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.3)',
+            animation: isDragging ? 'none' : 'slideUp 0.3s ease-out',
+            maxHeight: '70vh',
+            overflowY: 'auto',
+            transition: isDragging ? 'none' : 'transform 0.2s ease-out',
+            cursor: isDragging ? 'grabbing' : 'default',
+            touchAction: isDragging ? 'none' : 'pan-y', // Disable touch actions when dragging to prevent pull-to-refresh
+            userSelect: 'none',
+            overscrollBehavior: 'contain' // Prevent pull-to-refresh when scrolling reaches top
+          }}
+          onClick={(e) => {
+            // Only stop propagation if not clicking on a button
+            if (e.target.tagName !== 'BUTTON' && !e.target.closest('button')) {
+              e.stopPropagation();
+            }
+          }}
+        >
+          {/* Handle bar - visual indicator only, entire sheet is draggable */}
+          <div
+            style={{
+              width: '40px',
+              height: '4px',
+              backgroundColor: 'rgba(255, 255, 255, 0.3)',
+              borderRadius: '2px',
+              margin: '0 auto 0.75rem', // Reduced margin to move handle up
+              pointerEvents: 'none' // Handle is just visual, dragging works from entire sheet
+            }}
+          />
+          
+          {/* Tools list */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem'
+            }}
+          >
+            {tools.map(tool => {
+              // Determine if tool is active
+              const isActive = 
+                (tool.id === 'people' && selectedRecipients.length > 0) ||
+                (tool.id === 'check-in' && primaryAction === 'check-in') ||
+                (tool.id === 'pos' && primaryAction === 'pos') ||
+                (tool.id === 'assign' && hasAssignPill);
+              
+              return (
+                <button
+                  key={tool.id}
+                  type="button"
+                  className="btn"
+                  onClick={tool.onClick}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    justifyContent: 'flex-start',
+                    gap: '1rem',
+                    padding: '1rem',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    borderRadius: '0.5rem',
+                    color: 'rgba(255, 255, 255, 0.9)',
+                    transition: 'all 0.2s',
+                    textAlign: 'left',
+                    width: '100%'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                  onTouchStart={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+                  }}
+                  onTouchEnd={(e) => {
+                    // Small delay to show feedback before action
+                    setTimeout(() => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }, 150);
+                  }}
+                  onTouchCancel={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <i 
+                    className={`bi ${tool.icon}`} 
+                    style={{ 
+                      fontSize: '1.5rem', 
+                      flexShrink: 0, 
+                      marginTop: '0.125rem',
+                      color: isActive ? '#0d6efd' : 'rgba(255, 255, 255, 0.9)'
+                    }}
+                  ></i>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <span style={{ 
+                      fontSize: '1rem', 
+                      fontWeight: '500',
+                      color: isActive ? '#0d6efd' : 'rgba(255, 255, 255, 0.9)'
+                    }}>
+                      {tool.label}
+                    </span>
+                    {tool.description && (
+                      <span style={{ 
+                        fontSize: '0.875rem', 
+                        color: isActive ? '#0d6efd' : 'rgba(255, 255, 255, 0.6)', 
+                        fontWeight: '400' 
+                      }}>
+                        {tool.description}
+                      </span>
+                    )}
+                  </div>
+                  {isActive && (
+                    <i 
+                      className="bi bi-check" 
+                      style={{ 
+                        fontSize: '1.5rem', 
+                        color: '#0d6efd',
+                        flexShrink: 0,
+                        marginTop: '0.125rem',
+                        fontWeight: 'bold'
+                      }}
+                    ></i>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </>
+    );
+  };
+
   return (
-    <div className="composer-bar" style={{
-      position: 'relative',
-      padding: '0.75rem 1rem',
-      zIndex: 100
-    }}>
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'linear-gradient(to top, rgba(26, 26, 26, 1) 0%, rgba(26, 26, 26, 0.8) 40%, rgba(26, 26, 26, 0) 100%)',
-        pointerEvents: 'none',
-        zIndex: -1
-      }}></div>
-      <div style={{
-        position: 'absolute',
-        top: '-2rem',
-        left: 0,
-        right: 0,
-        height: '2rem',
-        background: 'linear-gradient(to top, rgba(26, 26, 26, 0.8) 0%, rgba(26, 26, 26, 0) 100%)',
-        pointerEvents: 'none',
-        zIndex: -1
-      }}></div>
-      <div style={{ position: 'relative', zIndex: 1 }}>
-        {renderComposer()}
+    <>
+      <div className="composer-bar" style={{
+        position: 'relative',
+        padding: '0.75rem 1rem',
+        zIndex: 100
+      }}>
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'linear-gradient(to top, rgba(26, 26, 26, 1) 0%, rgba(26, 26, 26, 0.8) 40%, rgba(26, 26, 26, 0) 100%)',
+          pointerEvents: 'none',
+          zIndex: -1
+        }}></div>
+        <div style={{
+          position: 'absolute',
+          top: '-2rem',
+          left: 0,
+          right: 0,
+          height: '2rem',
+          background: 'linear-gradient(to top, rgba(26, 26, 26, 0.8) 0%, rgba(26, 26, 26, 0) 100%)',
+          pointerEvents: 'none',
+          zIndex: -1
+        }}></div>
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          {renderComposer()}
+        </div>
       </div>
-    </div>
+      {renderBottomSheet()}
+      {renderPeopleSheet()}
+      {renderCheckInSheet()}
+      {renderPosSheet()}
+    </>
   );
 }
 

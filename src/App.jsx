@@ -40,17 +40,33 @@ function App() {
   const [openThread, setOpenThread] = useState(null);
   const feedRef = useRef(null);
   
+  // Track bottom sheet state to hide jump button
+  const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
+  
+  useEffect(() => {
+    const checkBottomSheet = () => {
+      setIsBottomSheetOpen(document.body.hasAttribute('data-bottom-sheet-open'));
+    };
+    
+    // Check initially
+    checkBottomSheet();
+    
+    // Watch for attribute changes
+    const observer = new MutationObserver(checkBottomSheet);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['data-bottom-sheet-open']
+    });
+    
+    return () => observer.disconnect();
+  }, []);
+  
   // Ref map for feed items - used for auto-scroll re-anchoring when filters activate
   const itemRefs = useRef(new Map());
   
   // Track user scroll activity to avoid auto-scrolling while user is actively scrolling
   const lastUserScrollTime = useRef(0);
   const isUserScrolling = useRef(false);
-  
-  // Chrome visibility state for auto-hide on scroll
-  const [isChromeHidden, setIsChromeHidden] = useState(false);
-  const lastScrollTop = useRef(0);
-  const scrollTimeoutRef = useRef(null);
   
   // New items tracking: atBottom state and newCount for floating jump button
   const [atBottom, setAtBottom] = useState(true); // Start at bottom
@@ -80,14 +96,6 @@ function App() {
     }
   }, [starredIds]);
   
-  // Initialize scroll position on mount and ensure chrome is visible initially
-  useEffect(() => {
-    if (feedRef.current) {
-      lastScrollTop.current = feedRef.current.scrollTop;
-      // Ensure chrome is visible on initial load
-      setIsChromeHidden(false);
-    }
-  }, []);
 
   // Initialize seed data
   useEffect(() => {
@@ -130,24 +138,15 @@ function App() {
     }
   }, [activeFilter]);
 
-  // Auto-hide chrome based on scroll direction and position
-  // Intent model: Scrolling UP = reviewing/reading, Scrolling DOWN = ready to act
+  // Track scroll position for atBottom state (for new items button)
   useEffect(() => {
     const feedElement = feedRef.current;
     if (!feedElement) return;
 
     const handleScroll = () => {
-      // Don't hide if tool mode is active
-      if (toolMode) {
-        setIsChromeHidden(false);
-        return;
-      }
-
       const currentScrollTop = feedElement.scrollTop;
       const scrollHeight = feedElement.scrollHeight;
       const clientHeight = feedElement.clientHeight;
-      const scrollDelta = currentScrollTop - lastScrollTop.current;
-      const scrollDirection = scrollDelta > 0 ? 'down' : 'up';
       
       // Distance from bottom (negative means scrolled past bottom)
       const distanceFromBottom = scrollHeight - clientHeight - currentScrollTop;
@@ -161,83 +160,14 @@ function App() {
           setNewCount(0);
         }
       }
-      
-      // Debounce very small movements - only react if scroll delta exceeds ~15px
-      if (Math.abs(scrollDelta) < 15 && lastScrollTop.current !== 0) {
-        lastScrollTop.current = currentScrollTop;
-        return;
-      }
-
-      // Rule 1: Auto-hide chrome when scrolling UP (unless at very top)
-      if (scrollDirection === 'up' && currentScrollTop > 15) {
-        setIsChromeHidden(true);
-      }
-      // Rule 2: Auto-show chrome when scrolling DOWN (anywhere in the feed)
-      else if (scrollDirection === 'down') {
-        setIsChromeHidden(false);
-      }
-      // Also show if at the very top (user scrolled all the way up)
-      else if (currentScrollTop <= 10) {
-        setIsChromeHidden(false);
-      }
-
-      lastScrollTop.current = currentScrollTop;
     };
 
-    // Use direct scroll handler for immediate response
     feedElement.addEventListener('scroll', handleScroll, { passive: true });
     
-      return () => {
-        feedElement.removeEventListener('scroll', handleScroll);
-        if (scrollTimeoutRef.current) {
-          clearTimeout(scrollTimeoutRef.current);
-        }
-      };
-    }, [toolMode, atBottom]);
-
-  // Rule 3: Keep chrome visible if tool mode is active
-  useEffect(() => {
-    if (toolMode) {
-      setIsChromeHidden(false);
-    }
-  }, [toolMode]);
-
-  // Rule 4: Briefly reveal chrome for high-urgency system items (only on new items)
-  const prevFeedItemsLength = useRef(feedItems.length);
-  useEffect(() => {
-    // Only trigger on new items being added
-    if (feedItems.length > prevFeedItemsLength.current) {
-      const newItems = feedItems.slice(prevFeedItemsLength.current);
-      const hasNewUrgentItem = newItems.some(item => 
-        item.type === 'system' && 
-        (item.title?.toLowerCase().includes('urgent') || 
-         item.title?.toLowerCase().includes('critical'))
-      );
-      
-      if (hasNewUrgentItem && isChromeHidden) {
-        setIsChromeHidden(false);
-        // Auto-hide again after 2 seconds if user continues scrolling up
-        const timer = setTimeout(() => {
-          const feedElement = feedRef.current;
-          if (feedElement) {
-            const currentScrollTop = feedElement.scrollTop;
-            const scrollHeight = feedElement.scrollHeight;
-            const clientHeight = feedElement.clientHeight;
-            const distanceFromBottom = scrollHeight - clientHeight - currentScrollTop;
-            
-            // Only hide if still scrolling up and not near bottom
-            if (currentScrollTop > 15 && distanceFromBottom > 120) {
-              setIsChromeHidden(true);
-            }
-          }
-        }, 2000);
-        
-        prevFeedItemsLength.current = feedItems.length;
-        return () => clearTimeout(timer);
-      }
-    }
-    prevFeedItemsLength.current = feedItems.length;
-  }, [feedItems, isChromeHidden]);
+    return () => {
+      feedElement.removeEventListener('scroll', handleScroll);
+    };
+  }, [atBottom]);
 
   const handleFilterChange = (filter) => {
     // Toggle: if clicking the same filter, set to 'all'
@@ -346,8 +276,6 @@ function App() {
       }
       setNewCount(0);
       setAtBottom(true);
-      // Ensure chrome is visible after sending a message
-      setIsChromeHidden(false);
     }, 100);
   };
   
@@ -438,7 +366,6 @@ function App() {
         }
         setNewCount(0);
         setAtBottom(true);
-        setIsChromeHidden(false);
       }, 100);
       return;
     }
@@ -462,7 +389,6 @@ function App() {
         }
         setNewCount(0);
         setAtBottom(true);
-        setIsChromeHidden(false);
       }, 100);
       return;
     }
@@ -685,30 +611,17 @@ function App() {
     );
   }
 
-  // Handler to show chrome when user interacts with composer
-  const handleComposerInteraction = () => {
-    setIsChromeHidden(false);
-  };
 
   return (
-    <div className="app-container d-flex flex-column" style={{ height: '100vh', backgroundColor: '#1a1a1a', color: '#ffffff', position: 'relative' }}>
-      {/* Top focus chips with auto-hide */}
+    <div className="app-container d-flex flex-column" style={{ height: '100dvh', backgroundColor: '#1a1a1a', color: '#ffffff', position: 'relative', overflow: 'hidden' }}>
+      {/* Top filter bar */}
       <div
         style={{
-          position: isChromeHidden ? 'fixed' : 'sticky',
+          position: 'sticky',
           top: 0,
           left: 0,
           right: 0,
-          zIndex: isChromeHidden ? -1 : 100,
-          transform: isChromeHidden ? 'translateY(-100%)' : 'translateY(0)',
-          opacity: isChromeHidden ? 0 : 1,
-          transition: isChromeHidden 
-            ? 'transform 150ms ease-out, opacity 150ms ease-out' 
-            : 'transform 150ms ease-in, opacity 150ms ease-in',
-          pointerEvents: isChromeHidden ? 'none' : 'auto',
-          height: isChromeHidden ? 0 : 'auto',
-          overflow: isChromeHidden ? 'hidden' : 'visible',
-          visibility: isChromeHidden ? 'hidden' : 'visible'
+          zIndex: 100
         }}
       >
         <TodayBar 
@@ -748,58 +661,52 @@ function App() {
           onCompleteTask={handleCompleteTask}
         />
         
-        {/* Floating "new items" jump button - only show when NOT at bottom */}
-        {!atBottom && (
+        {/* Floating "new items" jump button - only show when NOT at bottom and bottom sheets are closed */}
+        {!atBottom && !isBottomSheetOpen && (
           <button
             onClick={scrollToBottom}
             className="btn btn-sm btn-primary rounded-pill"
             style={{
               position: 'fixed',
-              bottom: '140px', // Above composer bar (increased to avoid overlap)
+              bottom: '140px', // Above composer bar with clearance (composer can expand with pills/text)
               left: '50%',
               transform: 'translateX(-50%)',
               zIndex: 200,
               boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-              backgroundColor: 'rgba(13, 110, 253, 0.9)',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
               border: 'none',
-              padding: '0.5rem 1rem',
-              fontSize: '0.875rem',
-              fontWeight: '500',
+              padding: '0.5rem',
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               transition: 'all 0.2s'
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(13, 110, 253, 1)';
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
               e.currentTarget.style.transform = 'translateX(-50%) scale(1.05)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(13, 110, 253, 0.9)';
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
               e.currentTarget.style.transform = 'translateX(-50%) scale(1)';
             }}
           >
-            {newCount} new ↓
+            <i className="bi bi-arrow-down" style={{ fontSize: '1rem' }}></i>
           </button>
         )}
       </div>
-      {/* Bottom composer with auto-hide */}
+      {/* Bottom composer */}
       <div 
         style={{ 
-          position: isChromeHidden ? 'fixed' : 'sticky', 
+          position: 'sticky', 
           bottom: 0,
           left: 0,
           right: 0,
-          zIndex: isChromeHidden ? -1 : 100,
-          transform: isChromeHidden ? 'translateY(100%)' : 'translateY(0)',
-          opacity: isChromeHidden ? 0 : 1,
-          transition: isChromeHidden 
-            ? 'transform 150ms ease-out, opacity 150ms ease-out' 
-            : 'transform 150ms ease-in, opacity 150ms ease-in',
-          pointerEvents: isChromeHidden ? 'none' : 'auto',
-          height: isChromeHidden ? 0 : 'auto',
-          overflow: isChromeHidden ? 'hidden' : 'visible',
-          visibility: isChromeHidden ? 'hidden' : 'visible'
+          zIndex: 100,
+          paddingBottom: 'env(safe-area-inset-bottom, 0)' // Account for iOS safe area
         }}
-        onClick={handleComposerInteraction}
-        onFocus={handleComposerInteraction}
       >
         <Composer
           selectedContext={selectedContext}
@@ -810,7 +717,6 @@ function App() {
           onReassignTask={handleReassignTask}
           feedItems={feedItems}
           onSendMessage={handleSendMessage}
-          onInputFocus={handleComposerInteraction}
         />
       </div>
     </div>

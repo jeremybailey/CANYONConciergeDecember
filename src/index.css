@@ -50,6 +50,16 @@ textarea::placeholder {
   scrollbar-width: none;
 }
 
+/* Hide scrollbar for today-bar horizontal scroll */
+.today-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.today-bar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Thread view slide-in animation */
 @keyframes slideIn {
   from {
@@ -57,6 +67,25 @@ textarea::placeholder {
   }
   to {
     transform: translateX(0);
+  }
+}
+
+/* Bottom sheet animations */
+@keyframes slideUp {
+  from {
+    transform: translateX(-50%) translateY(100%);
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 

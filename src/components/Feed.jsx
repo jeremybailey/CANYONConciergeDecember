@@ -7,9 +7,9 @@ function Feed({ items, allItems, activeFilter, onItemClick, onOpenThread, select
       case 'task':
         return 'service'; // All tasks map to 'service' filter (which is now labeled 'Tasks')
       case 'guest':
-        return 'guests'; // Guests map to 'guests' filter (which is now labeled 'Chats')
+        return 'guests'; // Guests map to 'guests' filter (which is now labeled 'Messages')
       case 'concierge':
-        return 'guests'; // Concierge messages are part of chats
+        return 'guests'; // Concierge messages are part of messages
       case 'system':
         return 'system';
       default:

@@ -38,7 +38,7 @@ function TodayBar({ feedItems, activeFilter, onFilterChange, starredIds = new Se
     { 
       key: 'guests', 
       filterKey: 'guests',
-      label: 'Chats', 
+      label: 'Messages', 
       value: '', // No value shown, just badge
       icon: 'bi-chat-dots',
       badge: activeConversations > 0 ? activeConversations : null
@@ -56,7 +56,7 @@ function TodayBar({ feedItems, activeFilter, onFilterChange, starredIds = new Se
       filterKey: 'system',
       label: 'System', 
       value: '', // No value shown, no badge
-      icon: 'bi-gear',
+      icon: 'bi-lightning',
       badge: null // Countdown is now shown on the system message card itself
     },
     { 
@@ -85,7 +85,12 @@ function TodayBar({ feedItems, activeFilter, onFilterChange, starredIds = new Se
       display: 'flex',
       gap: '0.75rem',
       alignItems: 'center',
-      flexWrap: 'wrap',
+      flexWrap: 'nowrap',
+      overflowX: 'auto',
+      overflowY: 'hidden',
+      WebkitOverflowScrolling: 'touch', // Smooth scrolling on iOS
+      scrollbarWidth: 'none', // Hide scrollbar on Firefox
+      msOverflowStyle: 'none', // Hide scrollbar on IE/Edge
       zIndex: 10
     }}>
       <div style={{
@@ -113,14 +118,15 @@ function TodayBar({ feedItems, activeFilter, onFilterChange, starredIds = new Se
         return (
           <div
             key={metric.key}
-            className="metric-item rounded-pill d-flex align-items-center gap-1"
+            className="metric-item rounded-pill d-flex align-items-center"
             style={{
               cursor: 'pointer',
-              padding: '0.375rem 0.75rem',
-              paddingRight: isActive ? '0.5rem' : '0.75rem',
+              padding: '0.5rem',
               transition: 'all 0.2s',
               position: 'relative',
               zIndex: 1,
+              flexShrink: 0, // Prevent items from shrinking
+              whiteSpace: 'nowrap', // Prevent text wrapping
               backgroundColor: isActive 
                 ? 'rgba(13, 110, 253, 0.25)' 
                 : 'rgba(255, 255, 255, 0.05)',
@@ -129,7 +135,13 @@ function TodayBar({ feedItems, activeFilter, onFilterChange, starredIds = new Se
                 : '1px solid rgba(255, 255, 255, 0.1)',
               boxShadow: isActive 
                 ? '0 0 8px rgba(13, 110, 253, 0.3), 0 0 4px rgba(13, 110, 253, 0.2)' 
-                : 'none'
+                : 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%'
             }}
             onClick={() => handleClick(metric)}
             onMouseEnter={(e) => {
@@ -148,74 +160,35 @@ function TodayBar({ feedItems, activeFilter, onFilterChange, starredIds = new Se
             <i 
               className={`bi ${metric.icon}`} 
               style={{ 
-                fontSize: '0.875rem', 
+                fontSize: '1.25rem', 
                 color: isActive ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.5)',
-                fontWeight: isActive ? '600' : '400'
+                fontWeight: 'bold'
               }}
             ></i>
-            <span style={{ 
-              fontSize: '0.75rem', 
-              color: isActive ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.5)',
-              fontWeight: isActive ? '500' : '400',
-              whiteSpace: 'nowrap'
-            }}>
-              {metric.label}
-            </span>
             {metric.badge && (
               <span 
                 className={`badge rounded-pill ${metric.key === 'starred' || metric.key === 'guests' ? 'bg-secondary' : 'bg-danger'}`}
                 style={{
-                  fontSize: metric.key === 'system' ? '0.5rem' : '0.5rem',
-                  minWidth: metric.key === 'system' ? 'auto' : '14px',
-                  height: '14px',
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  fontSize: '0.625rem',
+                  minWidth: '18px',
+                  height: '18px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  padding: metric.key === 'system' ? '0 4px' : '0 3px',
-                  fontFamily: metric.key === 'system' ? 'monospace' : 'inherit',
+                  padding: '0 4px',
+                  fontFamily: 'inherit',
                   lineHeight: '1',
-                  marginLeft: '0.125rem',
                   backgroundColor: (metric.key === 'starred' || metric.key === 'guests') ? 'rgba(255, 255, 255, 0.2)' : undefined,
-                  color: (metric.key === 'starred' || metric.key === 'guests') ? 'rgba(255, 255, 255, 0.9)' : undefined
+                  color: (metric.key === 'starred' || metric.key === 'guests') ? 'rgba(255, 255, 255, 0.9)' : undefined,
+                  border: '2px solid #1a1a1a',
+                  boxSizing: 'border-box'
                 }}
               >
                 {metric.badge}
               </span>
-            )}
-            {isActive && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleClick(metric);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  cursor: 'pointer',
-                  padding: '0',
-                  marginLeft: '0.375rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '16px',
-                  height: '16px',
-                  borderRadius: '50%',
-                  transition: 'all 0.2s',
-                  fontSize: '0.875rem',
-                  lineHeight: '1'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = 'rgba(255, 255, 255, 0.9)';
-                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = 'rgba(255, 255, 255, 0.7)';
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }}
-              >
-                ×
-              </button>
             )}
           </div>
         );

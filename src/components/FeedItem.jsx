@@ -6,6 +6,26 @@ function FeedItem({ item, allItems, isEmphasized, isSelected, onClick, onOpenThr
   const [countdown, setCountdown] = useState(null);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const locationDropdownRef = useRef(null);
+  const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
+  
+  // Watch for bottom sheet open/close to hide more actions icon
+  useEffect(() => {
+    const checkBottomSheet = () => {
+      setIsBottomSheetOpen(document.body.hasAttribute('data-bottom-sheet-open'));
+    };
+    
+    // Check initially
+    checkBottomSheet();
+    
+    // Watch for attribute changes
+    const observer = new MutationObserver(checkBottomSheet);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['data-bottom-sheet-open']
+    });
+    
+    return () => observer.disconnect();
+  }, []);
   const formatTime = (timestamp) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -114,7 +134,7 @@ function FeedItem({ item, allItems, isEmphasized, isSelected, onClick, onOpenThr
                     return 'Not specified';
                   })()}
                 </span>
-                <i className="bi bi-chevron-down" style={{ fontSize: '0.625rem' }}></i>
+                <i className="bi bi-chevron-down" style={{ fontSize: '0.625rem', fontWeight: 'bold' }}></i>
               </button>
               {showLocationDropdown && (
                 <div
@@ -329,7 +349,8 @@ function FeedItem({ item, allItems, isEmphasized, isSelected, onClick, onOpenThr
         style={{ 
           top: '0.5rem', 
           right: '0.5rem', 
-          zIndex: showActions ? 1003 : 1001 // Higher z-index when popover is open to appear above buttons from other cards
+          zIndex: showActions ? 1003 : 1001, // Higher z-index when popover is open to appear above buttons from other cards
+          display: isBottomSheetOpen ? 'none' : 'block' // Hide when bottom sheet is open
         }} 
         ref={actionsRef}
         onClick={(e) => e.stopPropagation()}
@@ -340,7 +361,17 @@ function FeedItem({ item, allItems, isEmphasized, isSelected, onClick, onOpenThr
             color: 'rgba(255, 255, 255, 0.6)', 
             fontSize: '1.25rem',
             zIndex: showActions ? 1 : 'auto', // Lower z-index when popover is open so popover appears above
-            position: 'relative' // Ensure z-index applies
+            position: 'relative', // Ensure z-index applies
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '26px',
+            height: '26px',
+            padding: '0',
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            transition: 'all 0.2s'
           }}
           onClick={(e) => {
             e.stopPropagation();
@@ -380,35 +411,35 @@ function FeedItem({ item, allItems, isEmphasized, isSelected, onClick, onOpenThr
               disabled={isCompleted}
               onClick={() => !isCompleted && handleAction('complete')}
             >
-              <i className="bi bi-check-circle me-2"></i> Complete
+              <i className="bi bi-check-circle me-2" style={{ fontWeight: 'bold' }}></i> Complete
             </button>
             <button
               className="btn btn-link text-start w-100 p-2"
               style={{ color: '#ffffff', fontSize: '0.875rem', textDecoration: 'none' }}
               onClick={() => handleAction('reply')}
             >
-              <i className="bi bi-chat me-2"></i> Reply
+              <i className="bi bi-chat me-2" style={{ fontWeight: 'bold' }}></i> Reply
             </button>
             <button
               className="btn btn-link text-start w-100 p-2"
               style={{ color: '#ffffff', fontSize: '0.875rem', textDecoration: 'none' }}
               onClick={() => handleAction('checkin')}
             >
-              <i className="bi bi-person-check me-2"></i> Check-in
+              <i className="bi bi-person-check me-2" style={{ fontWeight: 'bold' }}></i> Check-in
             </button>
             <button
               className="btn btn-link text-start w-100 p-2"
               style={{ color: '#ffffff', fontSize: '0.875rem', textDecoration: 'none' }}
               onClick={() => handleAction('order')}
             >
-              <i className="bi bi-cup-straw me-2"></i> Order drink
+              <i className="bi bi-cup-straw me-2" style={{ fontWeight: 'bold' }}></i> Order drink
             </button>
             <button
               className="btn btn-link text-start w-100 p-2"
               style={{ color: '#ffffff', fontSize: '0.875rem', textDecoration: 'none' }}
               onClick={() => handleAction('reassign')}
             >
-              <i className="bi bi-arrow-repeat me-2"></i> Reassign
+              <i className="bi bi-arrow-repeat me-2" style={{ fontWeight: 'bold' }}></i> Reassign
             </button>
           </div>
         )}
@@ -599,7 +630,7 @@ function FeedItem({ item, allItems, isEmphasized, isSelected, onClick, onOpenThr
           {/* Recipients - arrow icon format */}
           {recipients.length > 0 && (
             <div className="mb-1 d-flex align-items-center gap-1 flex-wrap">
-              <i className="bi bi-arrow-right" style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.75rem' }}></i>
+              <i className="bi bi-arrow-right" style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.75rem', fontWeight: 'bold' }}></i>
               {recipients.map((recipient, idx) => {
                 const recipientAvatarColor = recipient.isSpecial
                   ? (recipient.type === 'ai' ? '#3B31FF' : getAvatarColor(recipient.name))
@@ -862,7 +893,7 @@ function FeedItem({ item, allItems, isEmphasized, isSelected, onClick, onOpenThr
               zIndex: 9, // Lower than actions popover (z-index: 1000) to ensure popover appears on top
               color: isStarred ? '#ffc107' : 'rgba(255, 255, 255, 0.4)',
               fontSize: '1.1rem',
-              padding: '0.25rem',
+              padding: '0',
               border: 'none',
               background: 'none',
               cursor: 'pointer',
@@ -870,8 +901,8 @@ function FeedItem({ item, allItems, isEmphasized, isSelected, onClick, onOpenThr
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '24px',
-              height: '24px'
+              width: '26px',
+              height: '26px'
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.color = isStarred ? '#ffd700' : 'rgba(255, 255, 255, 0.7)';
@@ -883,9 +914,9 @@ function FeedItem({ item, allItems, isEmphasized, isSelected, onClick, onOpenThr
             }}
           >
             {isStarred ? (
-              <i className="bi bi-star-fill" style={{ fontSize: '1.1rem' }}></i>
+              <i className="bi bi-star-fill" style={{ fontSize: '1.1rem', fontWeight: 'bold' }}></i>
             ) : (
-              <i className="bi bi-star" style={{ fontSize: '1.1rem' }}></i>
+              <i className="bi bi-star" style={{ fontSize: '1.1rem', fontWeight: 'bold' }}></i>
             )}
           </button>
           {renderActionsPopover()}
